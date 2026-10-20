@@ -1,0 +1,137 @@
+{
+  "recipe_version": 1,
+  "description": "How the viral databases of the EVE tool are built. build.py applies these criteria to a newer RVDB release, so a rebuilt database keeps the same selection biases as the published one. The RefSeq viral proteins and Swiss-Prot are fixed inputs: never downloaded by the build.",
+  "refseq_viral": {
+    "source": "fixed file, not downloaded: the installed diamond/sequences.fasta, or the file given with --refseq-fasta",
+    "how_it_was_made": "NCBI Virus web download of the RefSeq proteins of all viruses (taxid 10239), with the FASTA definition line built from the fields below",
+    "defline": [
+      "AccVer_s",
+      "Definition_s",
+      "GenomicMoltype_s",
+      "VirusSpecies_s",
+      "VirusGenus_s",
+      "VirusFamily_s",
+      "SLen_i"
+    ],
+    "note": "Every RefSeq viral protein, all genome types: the screening needs the DNA and RT viruses too, to tell an EVE from a host gene.",
+    "how_to_download": "docs/refseq_viral_proteins.md"
+  },
+  "rvdb": {
+    "version": "latest",
+    "url": "https://rvdb-prot.pasteur.fr/files/",
+    "files": [
+      "U-RVDBv{v}-prot.hmm.xz",
+      "U-RVDBv{v}-prot-hmm-txt.tar.xz",
+      "U-RVDBv{v}-prot-hmm.sqlite.xz"
+    ],
+    "keywords_table": "fam_kw_seqnames",
+    "viral_family_suffixes": [
+      "virus",
+      "virales",
+      "viridae",
+      "viricetes",
+      "viria",
+      "viricota"
+    ],
+    "drop_genome_types": [
+      "dsDNA",
+      "dsDNA-RT",
+      "ssRNA-RT"
+    ],
+    "genome_type": "family -> genome type from the curated table rvdb_family_genome_mapping.tsv; families missing there take the most common GenomicMoltype_s of their NCBI Virus RefSeq proteins",
+    "rescue_without_family": {
+      "description": "Models whose LCA is above family level (e.g. Viruses, Orthornavirae) are kept when their seed sequences are RNA viruses",
+      "rna_taxa": [
+        "2559587"
+      ],
+      "retro_taxa": [
+        "2732397"
+      ],
+      "min_rna_seed_fraction": 0.5,
+      "max_retro_seeds": 0,
+      "default_genome_type": "ssRNA"
+    }
+  },
+  "eggnog": {
+    "version": "5.0",
+    "url": "http://eggnog5.embl.de/download/eggnog_5.0/per_tax_level/{taxid}/{taxid}_hmms.tar.gz",
+    "groups": {
+      "11157": [
+        "Mononegavirales",
+        "order",
+        "ssRNA(-)"
+      ],
+      "11989": [
+        "Fiersviridae",
+        "family",
+        "ssRNA(+)"
+      ],
+      "29258": [
+        "unclassified ssDNA viruses",
+        "no rank",
+        "ssDNA"
+      ],
+      "35278": [
+        "unclassified ssRNA positive-strand viruses",
+        "no rank",
+        "ssRNA(+)"
+      ],
+      "35301": [
+        "unclassified ssRNA negative-strand viruses",
+        "no rank",
+        "ssRNA(-)"
+      ],
+      "35325": [
+        "dsRNA viruses",
+        "no rank",
+        "dsRNA"
+      ],
+      "439488": [
+        "ssRNA viruses",
+        "no rank",
+        "ssRNA"
+      ],
+      "464095": [
+        "Picornavirales",
+        "order",
+        "ssRNA(+)"
+      ],
+      "675063": [
+        "Tymovirales",
+        "order",
+        "ssRNA(+)"
+      ],
+      "76804": [
+        "Nidovirales",
+        "order",
+        "ssRNA(+)"
+      ]
+    },
+    "note": "eggNOG 5.0 is no longer updated: these models are the same in every rebuild."
+  },
+  "calibration": {
+    "module": "evetool.databases.calibrate_hmm",
+    "negatives": {
+      "swissprot": "fixed file, not downloaded: the installed DIAMOND/geral/uniprot_sprot.fasta, or the file given with --swissprot; viral proteins removed by taxonomy",
+      "proteomes": [
+        "GCF_000001215.4",
+        "GCF_002204515.2",
+        "GCF_024334085.1",
+        "GCF_024763615.1",
+        "GCF_943734735.2",
+        "GCF_947086385.1"
+      ]
+    },
+    "positives": "RefSeq viral proteins of non-retroviral RNA and ssDNA viruses (from refseq_viral)",
+    "params": {
+      "threads": 5,
+      "lote": 25,
+      "t_report": 10.0,
+      "margem": 1.0,
+      "piso": 25.0,
+      "min_pos": 1,
+      "id_negativos": 0.7,
+      "chunk": 150
+    }
+  }
+}

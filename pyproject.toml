@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evetool"
+version = "1.0.0"
+description = "Discovery, validation, curation and cross-species comparison of endogenous viral elements"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+# The command-line tools (DIAMOND, MMseqs2, BLAST+...) come from environment.yml
+dependencies = ["biopython", "pandas", "numpy", "scipy", "networkx", "matplotlib", "seaborn",
+                "requests", "pyhmmer", "pysam"]
+
+[project.scripts]
+eve-tool = "evetool.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["evetool*"]
+
+[tool.setuptools.package-data]
+evetool = ["curation/web/*.html", "curation/web/assets/*", "comparative/*.R", "databases/*.json"]

@@ -1,0 +1,35 @@
+# pixi install && pixi run check   (alternative to environment.yml)
+[workspace]
+name = "eve-tool"
+version = "1.0.0"
+description = "Discovery, validation, curation and cross-species comparison of endogenous viral elements"
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64", "osx-64"]
+
+[dependencies]
+python = ">=3.10"
+orfipy = ">=0.0.4"
+mmseqs2 = ">=15.6"
+diamond = ">=2.1"
+blast = ">=2.15"
+hmmer = ">=3.4"
+bedtools = ">=2.31"
+samtools = ">=1.19"
+ncbi-datasets-cli = ">=16.0"
+hisat2 = "*"
+minimap2 = "*"
+biopython = ">=1.83"
+pandas = ">=2.2"
+numpy = ">=1.26"
+scipy = ">=1.11"
+networkx = ">=3.2"
+matplotlib = ">=3.8"
+seaborn = ">=0.13"
+requests = ">=2.31"
+pyhmmer = ">=0.11"
+pysam = ">=0.22"
+
+[tasks]
+check = "./eve-tool check"
+databases = "./eve-tool databases"
+example = "./run_pipeline.sh example -i examples/llongipalpis_3_windows.fna"

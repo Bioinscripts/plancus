@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Runs the EVE tool from this folder without installing it: ./eve-tool <command> (./eve-tool -h).
+# After `pip install -e .` the same command is also on the PATH as eve-tool.
+AQUI="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+PY="${EVE_PYTHON:-}"
+for c in "$PY" "${CONDA_PREFIX:+$CONDA_PREFIX/bin/python3}" \
+         "$(conda info --base 2>/dev/null)/envs/eve_env/bin/python3" \
+         "$HOME/miniconda3/envs/eve_env/bin/python3" "$HOME/miniforge3/envs/eve_env/bin/python3" \
+         "$(command -v python3)"; do
+    [ -n "$c" ] && [ -x "$c" ] && PY="$c" && break
+done
+export PATH="$(dirname "$PY"):$PATH"
+export PYTHONPATH="$AQUI${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PY" -m evetool "$@"

@@ -1,0 +1,33 @@
+# conda env create -f environment.yml && conda activate eve_env
+# (mamba or micromamba work the same way). Then: ./eve-tool check
+name: eve_env
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.10
+
+  # --- Command-line tools (Bioconda) ---
+  - orfipy>=0.0.4
+  - mmseqs2>=15.6
+  - diamond>=2.1
+  - blast>=2.15            # makeblastdb, tblastn, tblastx, rpsblast, dustmasker, segmasker
+  - hmmer>=3.4             # hmmscan for the Pfam annotation
+  - bedtools>=2.31
+  - samtools>=1.19
+  - ncbi-datasets-cli>=16.0
+  # RNA-seq coverage (only with --rnaseq-*)
+  - hisat2
+  - minimap2
+
+  # --- Python libraries ---
+  - biopython>=1.83
+  - pandas>=2.2
+  - numpy>=1.26
+  - scipy>=1.11
+  - networkx>=3.2
+  - matplotlib>=3.8
+  - seaborn>=0.13
+  - requests>=2.31
+  - pyhmmer>=0.11
+  - pysam>=0.22
