@@ -1,0 +1,560 @@
+<title>Curated Sand Fly EVEs</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: one column of chart cards under a single filter row; tokens from the PLANCUS
+     curation page, so both pages read as the same tool. */
+  :root{
+    --bg:#f4f5f3; --surface:#fcfcfb; --surface-2:#eef0ec; --border:#d9dbd5;
+    --text:#0b0b0b; --text-2:#52514e; --muted:#6f6e69;
+    --accent:#19647a; --brand:#1e3d4f;
+    --grid:#e3e5e0; --axis:#c3c2b7;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300;
+    --neutral:#a8a7a0;
+    /* sequential blue, 1 locus -> 16+ loci, and the ink that reads on each step */
+    --h1:#b7d3f6; --h2:#6da7ec; --h3:#2a78d6; --h4:#1c5cab; --h5:#0d366b;
+    --hi1:#0b0b0b; --hi2:#0b0b0b; --hi3:#ffffff; --hi4:#ffffff; --hi5:#ffffff;
+    --empty:#f3f4f1;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --bg:#141413; --surface:#1a1a19; --surface-2:#232322; --border:#33332f;
+      --text:#f0efec; --text-2:#c3c2b7; --muted:#9a998f;
+      --accent:#3399b4; --brand:#a9cbd9;
+      --grid:#2b2b29; --axis:#383835;
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300;
+      --neutral:#6b6a65;
+      --h1:#184f95; --h2:#256abf; --h3:#3987e5; --h4:#86b6ef; --h5:#cde2fb;
+      --hi1:#ffffff; --hi2:#ffffff; --hi3:#0b0b0b; --hi4:#0b0b0b; --hi5:#0b0b0b;
+      --empty:#1f1f1e;
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --bg:#141413; --surface:#1a1a19; --surface-2:#232322; --border:#33332f;
+    --text:#f0efec; --text-2:#c3c2b7; --muted:#9a998f;
+    --accent:#3399b4; --brand:#a9cbd9;
+    --grid:#2b2b29; --axis:#383835;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300;
+    --neutral:#6b6a65;
+    --h1:#184f95; --h2:#256abf; --h3:#3987e5; --h4:#86b6ef; --h5:#cde2fb;
+    --hi1:#ffffff; --hi2:#ffffff; --hi3:#0b0b0b; --hi4:#0b0b0b; --hi5:#0b0b0b;
+    --empty:#1f1f1e;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 var(--font)}
+  .wrap{max-width:1180px;margin:0 auto;padding-block:24px 64px;
+        padding-left:max(16px, env(safe-area-inset-left, 0px));
+        padding-right:max(16px, env(safe-area-inset-right, 0px));
+        display:grid;gap:16px}
+  header{display:grid;gap:4px}
+  .eyebrow{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--brand);font-weight:650}
+  h1{font-size:24px;line-height:1.2;margin:0;letter-spacing:-.01em;text-wrap:balance}
+  .lede{margin:0;color:var(--text-2);max-width:72ch}
+  .facts{display:flex;flex-wrap:wrap;gap:6px 18px;margin:6px 0 0;padding:0;list-style:none;color:var(--text-2);
+         font-size:13px}
+  .facts b{color:var(--text);font-weight:650}
+  .filters{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end;padding:12px 14px;background:var(--surface);
+           border:1px solid var(--border);border-radius:10px;position:sticky;top:env(safe-area-inset-top, 0px);z-index:5}
+  .filters label{display:grid;gap:3px;font-size:12px;color:var(--text-2)}
+  select{font:inherit;font-size:13.5px;padding:6px 8px;border-radius:7px;border:1px solid var(--border);
+         background:var(--surface);color:var(--text);min-width:0;max-width:100%}
+  select:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .filters .count{margin-left:auto;font-size:13px;color:var(--text-2)}
+  button.reset{font:inherit;font-size:13px;border:1px solid var(--border);background:transparent;color:var(--accent);
+               border-radius:7px;padding:6px 10px;cursor:pointer}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;min-width:0;
+        display:grid;gap:10px}
+  .card h2{font-size:15.5px;margin:0;letter-spacing:-.005em}
+  .card .sub{margin:0;color:var(--text-2);font-size:13px;max-width:80ch}
+  .legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--text-2);margin:0;padding:0;list-style:none}
+  .legend li{display:flex;align-items:center;gap:6px}
+  .sw{width:12px;height:12px;border-radius:3px;flex:none}
+  .chart{overflow-x:auto;min-width:0}
+  .chart svg{display:block}
+  svg text{font-family:var(--font);fill:var(--text)}
+  svg .t2{fill:var(--text-2)} svg .mu{fill:var(--muted)} svg .it{font-style:italic}
+  svg .grp{font-weight:650}
+  svg .hit{cursor:pointer}
+  svg .hit:hover, svg .hit:focus{filter:brightness(1.12)}
+  svg .hit:focus{outline:none;stroke:var(--text);stroke-width:1.5}
+  details > summary{cursor:pointer;color:var(--accent);font-size:13px;width:max-content}
+  .tablewrap{overflow-x:auto;max-height:420px;overflow-y:auto;margin-top:8px;border:1px solid var(--border);border-radius:8px}
+  table{border-collapse:collapse;font-size:12.5px;width:100%}
+  th,td{padding:5px 9px;border-bottom:1px solid var(--grid);text-align:left;white-space:nowrap}
+  th{position:sticky;top:0;background:var(--surface-2);font-weight:600;color:var(--text-2)}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  td.it{font-style:italic}
+  .tt{position:fixed;pointer-events:none;z-index:20;background:var(--surface);color:var(--text);border:1px solid var(--border);
+      border-radius:8px;padding:8px 10px;font-size:12.5px;box-shadow:0 6px 20px rgba(0,0,0,.14);max-width:300px;display:grid;gap:2px}
+  .tt .v{font-size:15px;font-weight:650}
+  .tt .k{color:var(--text-2)}
+  .tt .key{display:inline-block;width:12px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+  .sel-head{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:baseline}
+  .sel-head .sub b{color:var(--text)}
+  footer{color:var(--muted);font-size:12px}
+  @media (max-width:560px){ h1{font-size:20px} .filters{position:static} .filters .count{margin-left:0} }
+  @media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">PLANCUS · manual curation</div>
+    <h1>Curated sand fly EVEs</h1>
+    <p class="lede">Approved endogenous viral element loci, one row per locus as in the curation page.
+      Hover a bar, cell or dot for its numbers; click it to list its loci at the bottom.</p>
+    <ul class="facts" id="facts"></ul>
+  </header>
+
+  <form class="filters" id="filters" aria-label="Filters">
+    <label for="f-host">Host
+      <select id="f-host"></select></label>
+    <label for="f-type">Viral genome type
+      <select id="f-type"></select></label>
+    <button type="button" class="reset" id="f-reset">Show all</button>
+    <span class="count" id="f-count"></span>
+  </form>
+
+  <section class="card" aria-labelledby="h-bars">
+    <h2 id="h-bars">Approved loci per host species</h2>
+    <p class="sub">Split by the genome type of the curated viral family. Assembly size and sequence count
+      are context: fragmented assemblies hold more, shorter contigs.</p>
+    <ul class="legend" id="leg-types"></ul>
+    <div class="chart" id="c-bars"></div>
+    <details><summary>Table</summary><div class="tablewrap" id="t-bars"></div></details>
+  </section>
+
+  <section class="card" aria-labelledby="h-fam-sp">
+    <h2 id="h-fam-sp">Viral family by host species</h2>
+    <p class="sub">Number of approved loci per cell. Families are grouped by genome type; orders and realms
+      mark loci the curation left above family level.</p>
+    <ul class="legend legend-heat"></ul>
+    <div class="chart" id="c-fam-sp"></div>
+    <details><summary>Table</summary><div class="tablewrap" id="t-fam-sp"></div></details>
+  </section>
+
+  <section class="card" aria-labelledby="h-fam-cl">
+    <h2 id="h-fam-cl">Viral family by protein class</h2>
+    <p class="sub">Which viral proteins were endogenized, per family (curated protein class).</p>
+    <ul class="legend legend-heat"></ul>
+    <div class="chart" id="c-fam-cl"></div>
+    <details><summary>Table</summary><div class="tablewrap" id="t-fam-cl"></div></details>
+  </section>
+
+  <section class="card" aria-labelledby="h-id">
+    <h2 id="h-id">Identity to the closest virus</h2>
+    <p class="sub">Amino-acid identity of each locus to its best DIAMOND viral hit; the dark tick is the
+      median (families with 3 or more loci). Loci supported only by HMM have no identity and are counted
+      on the right.</p>
+    <div class="chart" id="c-id"></div>
+    <details><summary>Table</summary><div class="tablewrap" id="t-id"></div></details>
+  </section>
+
+  <section class="card" aria-labelledby="h-sel" id="sel">
+    <div class="sel-head">
+      <h2 id="h-sel">Loci</h2>
+      <p class="sub" id="sel-desc"></p>
+      <button type="button" class="reset" id="sel-clear" hidden>Back to all loci in view</button>
+    </div>
+    <div class="tablewrap" id="t-sel"></div>
+  </section>
+
+  <footer id="foot"></footer>
+</div>
+<div class="tt" id="tt" hidden></div>
+
+<script>window.EVE_FIGURES = /*__EVE_FIGURES__*/null;</script>
+<script>
+(function(){
+"use strict";
+const D = window.EVE_FIGURES;
+if(!D){ document.querySelector(".lede").textContent = "No data: generate this page with eve-tool figures."; return; }
+
+const NS = "http://www.w3.org/2000/svg";
+const TYPE_VAR = {"(−)ssRNA":"--s1","(+)ssRNA":"--s2","dsRNA":"--s3","ssDNA":"--s4","dsDNA":"--s5","RT":"--s6","Unassigned":"--neutral"};
+const BINS = [[1,1],[2,3],[4,7],[8,15],[16,Infinity]];
+const ITAL = /(viridae|virinae|virales|viricetes|viricota|virae|viria)$/i;
+const state = {host:"", type:"", sel:null};
+const $ = s => document.querySelector(s);
+const css = v => `var(${v})`;
+const typeColor = t => css(TYPE_VAR[t] || "--neutral");
+const binOf = n => BINS.findIndex(([a,b]) => n >= a && n <= b);
+const fmt = n => n.toLocaleString("en-US");
+const spName = s => s.replace(/_/g," ");
+
+function el(tag, attrs, parent){
+  const e = document.createElementNS(NS, tag);
+  for(const k in attrs||{}) e.setAttribute(k, attrs[k]);
+  if(parent) parent.appendChild(e);
+  return e;
+}
+/* SVG label with italic taxon parts: species are italic (but "sp."), family/order names too */
+function taxText(parent, attrs, label, kind){
+  const t = el("text", attrs, parent);
+  const add = (txt, it) => { const s = el("tspan", it ? {class:"it"} : {}, t); s.textContent = txt; };
+  if(kind === "species"){
+    const n = spName(label);
+    if(/ sp$/.test(n)){ add(n.slice(0,-3), true); add(" sp.", false); } else add(n, true);
+  } else if(kind === "family"){
+    const m = label.match(/^unclassified (.+)$/);
+    if(m){ add("unclassified ", false); add(m[1], ITAL.test(m[1])); }
+    else add(label, ITAL.test(label));
+  } else add(label, false);
+  return t;
+}
+function measure(texts, size, italic){
+  const c = measure.c || (measure.c = document.createElement("canvas").getContext("2d"));
+  c.font = `${italic ? "italic " : ""}${size}px ${getComputedStyle(document.body).fontFamily}`;
+  return Math.max(0, ...texts.map(t => c.measureText(t).width));
+}
+
+/* ---------- tooltip (values lead, labels follow; textContent only) ---------- */
+const tt = $("#tt");
+function showTip(ev, value, rows, keyColor){
+  tt.replaceChildren();
+  const v = document.createElement("div"); v.className = "v";
+  if(keyColor){ const k = document.createElement("span"); k.className = "key"; k.style.background = keyColor; v.appendChild(k); }
+  v.appendChild(document.createTextNode(value)); tt.appendChild(v);
+  for(const r of rows){ const d = document.createElement("div"); d.className = "k"; d.textContent = r; tt.appendChild(d); }
+  tt.hidden = false;
+  let x, y;
+  if(ev.clientX !== undefined && ev.type !== "focus"){ x = ev.clientX; y = ev.clientY; }
+  else { const b = ev.target.getBoundingClientRect(); x = b.right; y = b.top; }
+  const w = tt.offsetWidth, h = tt.offsetHeight;
+  tt.style.left = Math.max(8, Math.min(innerWidth - w - 8, x + 14)) + "px";
+  tt.style.top = Math.max(8, Math.min(innerHeight - h - 8, y + 14)) + "px";
+}
+function hideTip(){ tt.hidden = true; }
+function interactive(node, label, tip, onPick){
+  node.setAttribute("class", (node.getAttribute("class")||"") + " hit");
+  node.setAttribute("tabindex", "0");
+  node.setAttribute("role", "button");
+  node.setAttribute("aria-label", label);
+  node.addEventListener("pointermove", ev => tip(ev));
+  node.addEventListener("focus", ev => tip(ev));
+  node.addEventListener("pointerleave", hideTip);
+  node.addEventListener("blur", hideTip);
+  node.addEventListener("click", () => { hideTip(); onPick(); });
+  node.addEventListener("keydown", ev => { if(ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); onPick(); } });
+}
+function pick(title, loci){
+  state.sel = {title, loci};
+  renderSelection();
+  $("#sel").scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block:"start"});
+}
+
+/* ---------- data in view ---------- */
+function hostOk(s){
+  if(!state.host) return true;
+  if(state.host.startsWith("g:")) return (D.host_group[s]||"") === state.host.slice(2);
+  return s === state.host.slice(2);
+}
+function inView(){ return D.loci.filter(l => hostOk(l.species) && (!state.type || l.genome_type === state.type)); }
+function speciesInView(){ return D.species.filter(hostOk); }
+
+/* ---------- filters ---------- */
+function setupFilters(){
+  const fh = $("#f-host");
+  const opt = (v, t, parent) => { const o = document.createElement("option"); o.value = v; o.textContent = t; (parent||fh).appendChild(o); };
+  opt("", `All ${D.species.length} species`);
+  const groups = [...new Set(D.species.map(s => D.host_group[s]).filter(Boolean))];
+  if(groups.length){ const og = document.createElement("optgroup"); og.label = "Host groups"; fh.appendChild(og);
+    groups.forEach(g => opt("g:"+g, g, og)); }
+  const os = document.createElement("optgroup"); os.label = "Species"; fh.appendChild(os);
+  D.species.forEach(s => opt("s:"+s, spName(s).replace(/ sp$/, " sp."), os));
+  const ft = $("#f-type");
+  opt("", "All types", ft);
+  D.types.forEach(t => opt(t, t, ft));
+  try{ const saved = JSON.parse(localStorage.getItem("eve-fig-filters")||"{}");
+       if([...fh.options].some(o => o.value === saved.host)) state.host = saved.host;
+       if([...ft.options].some(o => o.value === saved.type)) state.type = saved.type; } catch(e){}
+  fh.value = state.host; ft.value = state.type;
+  const go = () => { state.host = fh.value; state.type = ft.value; state.sel = null;
+    try{ localStorage.setItem("eve-fig-filters", JSON.stringify({host:state.host, type:state.type})); }catch(e){}
+    renderAll(); };
+  fh.addEventListener("change", go); ft.addEventListener("change", go);
+  $("#f-reset").addEventListener("click", () => { fh.value = ""; ft.value = ""; go(); });
+  $("#filters").addEventListener("submit", ev => ev.preventDefault());
+}
+
+/* ---------- legends ---------- */
+function legends(){
+  const lt = $("#leg-types"); lt.replaceChildren();
+  D.types.forEach(t => { const li = document.createElement("li"); const s = document.createElement("span");
+    s.className = "sw"; s.style.background = typeColor(t); li.append(s, document.createTextNode(t)); lt.appendChild(li); });
+  document.querySelectorAll(".legend-heat").forEach(ul => { ul.replaceChildren();
+    const li0 = document.createElement("li"); li0.textContent = "Loci per cell:"; ul.appendChild(li0);
+    BINS.forEach(([a,b], k) => { const li = document.createElement("li"); const s = document.createElement("span");
+      s.className = "sw"; s.style.background = css("--h"+(k+1));
+      li.append(s, document.createTextNode(b === Infinity ? `${a}+` : (a === b ? `${a}` : `${a}–${b}`))); ul.appendChild(li); }); });
+}
+
+/* ---------- 1. stacked bars ---------- */
+function niceTicks(max, n){
+  const raw = max / n, p = Math.pow(10, Math.floor(Math.log10(raw||1))), m = raw / p;
+  const step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+  const out = []; for(let v = 0; v <= max + 1e-9; v += step) out.push(v);
+  if(out[out.length-1] < max) out.push(out[out.length-1] + step);
+  return out;
+}
+function barPath(x, y, w, h, r){   // square at the baseline side, rounded data end
+  r = Math.min(r, w, h/2);
+  return `M${x},${y}H${x+w-r}Q${x+w},${y} ${x+w},${y+r}V${y+h-r}Q${x+w},${y+h} ${x+w-r},${y+h}H${x}Z`;
+}
+function renderBars(loci){
+  const box = $("#c-bars"); box.replaceChildren();
+  const sp = speciesInView();
+  const rows = []; let g0 = null;
+  sp.forEach(s => { const g = D.host_group[s] || ""; if(g && g !== g0) rows.push({kind:"group", name:g}); g0 = g; rows.push({kind:"species", name:s}); });
+  const by = {}; loci.forEach(l => { (by[l.species] = by[l.species] || {})[l.genome_type] = ((by[l.species]||{})[l.genome_type]||0) + 1; });
+  const tot = s => D.types.reduce((a,t) => a + ((by[s]||{})[t]||0), 0);
+  const W = Math.max(340, box.clientWidth || 800);
+  const showAsm = W >= 640, short = W < 520;
+  const shown = s => short ? spName(s).replace(/^(\S)\S+ (?!sp$)/, "$1. ") : s;
+  const labW = Math.min(210, measure(sp.map(s => spName(shown(s))), 13, true) + 14);
+  const asmW = showAsm ? 170 : 0;
+  const plotW = W - labW - 44 - asmW;
+  const xmax = Math.max(1, ...sp.map(tot));
+  const ticks = niceTicks(xmax, plotW < 300 ? 3 : 5);
+  const sx = v => labW + v / ticks[ticks.length-1] * plotW;
+  let y = 8; const pos = rows.map(r => { const h = r.kind === "group" ? 24 : 26; const c = y + h/2; y += h; return c; });
+  const H = y + 34;
+  const svg = el("svg", {width: W, height: H, viewBox: `0 0 ${W} ${H}`, role:"img",
+    "aria-label": "Approved EVE loci per host species, stacked by viral genome type"}, box);
+  ticks.forEach(t => { el("line", {x1:sx(t), x2:sx(t), y1:4, y2:y, stroke:css("--grid"), "stroke-width":1}, svg);
+    const tx = el("text", {x:sx(t), y:y+16, "text-anchor":"middle", "font-size":11.5, class:"mu"}, svg); tx.textContent = fmt(t); });
+  el("line", {x1:labW, x2:labW, y1:4, y2:y, stroke:css("--axis"), "stroke-width":1}, svg);
+  const ax = el("text", {x: labW + plotW/2, y: y + 31, "text-anchor":"middle", "font-size":12, class:"t2"}, svg);
+  ax.textContent = "Approved EVE loci";
+  if(showAsm){
+    [["Assembly (Mb)", W-100], ["Sequences", W-8]].forEach(([t, x]) => {
+      const e = el("text", {x, y: 14, "text-anchor":"end", "font-size":11.5, class:"mu"}, svg); e.textContent = t; });
+  }
+  rows.forEach((r, i) => {
+    const cy = pos[i];
+    if(r.kind === "group"){
+      const e = el("text", {x: 2, y: cy + 4, "font-size":12, class:"grp t2"}, svg); e.textContent = r.name; return;
+    }
+    taxText(svg, {x: labW - 8, y: cy + 4, "text-anchor":"end", "font-size":13}, shown(r.name), "species");
+    let x0 = 0; const segs = D.types.filter(t => (by[r.name]||{})[t]);
+    segs.forEach((t, k) => {
+      const v = by[r.name][t]; const xa = sx(x0), xb = sx(x0 + v);
+      const last = k === segs.length - 1;
+      const w = Math.max(1, xb - xa - (last ? 0 : 2));
+      const p = el("path", {d: last ? barPath(xa, cy-8, w, 16, 4) : `M${xa},${cy-8}h${w}v16h${-w}Z`, fill: typeColor(t)}, svg);
+      const sel = loci.filter(l => l.species === r.name && l.genome_type === t);
+      interactive(p, `${spName(r.name)}, ${t}: ${v} loci`,
+        ev => showTip(ev, `${v} loci`, [`${spName(r.name)}`, `${t} · ${Math.round(100*v/tot(r.name))}% of ${tot(r.name)}`], typeColor(t)),
+        () => pick(`${spName(r.name)} · ${t}`, sel));
+      x0 += v;
+    });
+    const tl = el("text", {x: sx(x0) + 6, y: cy + 4, "font-size":12.5}, svg); tl.textContent = tot(r.name);
+    if(showAsm){
+      const m = D.assembly[r.name] || {};
+      const a = el("text", {x: W-100, y: cy+4, "text-anchor":"end", "font-size":12.5, class:"t2"}, svg);
+      a.textContent = m.length ? fmt(Math.round(m.length/1e6)) : "–";
+      const b = el("text", {x: W-8, y: cy+4, "text-anchor":"end", "font-size":12.5, class:"t2"}, svg);
+      b.textContent = m.contigs ? fmt(m.contigs) : "–";
+    }
+  });
+  // table view
+  table("#t-bars", ["Species","Host group",...D.types,"Total","Assembly (Mb)","Sequences"],
+    sp.map(s => [{v:spName(s), it:true}, D.host_group[s]||"", ...D.types.map(t => ({v:(by[s]||{})[t]||0, n:true})),
+      {v:tot(s), n:true}, {v: D.assembly[s] && D.assembly[s].length ? Math.round(D.assembly[s].length/1e6) : "", n:true},
+      {v: D.assembly[s] ? D.assembly[s].contigs : "", n:true}]));
+}
+
+/* genome type label along its band: 11px, else 9.5px, else only the band's tooltip */
+function bandLabel(svg, t, ya, yb){
+  const size = [11, 9.5].find(sz => (yb - ya) >= measure([t], sz, false) + 4);
+  if(size){ const e = el("text", {transform:`translate(19,${(ya+yb)/2}) rotate(-90)`, "text-anchor":"middle", "font-size":size, class:"t2"}, svg);
+            e.textContent = t; }
+  else { const r = el("rect", {x:0, y:ya, width:22, height:yb-ya, fill:"transparent"}, svg); el("title", {}, r).textContent = t; }
+}
+
+/* ---------- 2/3. heatmaps ---------- */
+function typeRuns(fams){
+  const runs = []; fams.forEach((f, i) => { const t = D.family_type[f];
+    if(runs.length && runs[runs.length-1].t === t) runs[runs.length-1].b = i; else runs.push({t, a:i, b:i}); });
+  return runs;
+}
+function renderHeat(boxSel, tableSel, loci, cols, colOf, colKind, groupOf, title){
+  const box = $(boxSel); box.replaceChildren();
+  const fams = D.families.filter(f => loci.some(l => l.family_label === f));
+  if(!fams.length || !cols.length){ const p = document.createElement("p"); p.className = "sub"; p.textContent = "No loci in this view."; box.appendChild(p); $(tableSel).replaceChildren(); return; }
+  const cnt = {}; loci.forEach(l => { const k = l.family_label + "\t" + colOf(l); cnt[k] = (cnt[k]||0) + 1; });
+  const famW = measure(fams, 12.5, true) + 14;
+  const band = 26, cw = 32, ch = 22;
+  const colLab = cols.map(c => colKind === "species" ? spName(c) : c);
+  const topLab = measure(colLab, 12, colKind === "species") + 10;
+  const grpH = groupOf ? 34 : 0;
+  const x0 = band + famW, y0 = grpH + topLab + 6;
+  const W = x0 + cols.length * cw + 46, H = y0 + fams.length * ch + 8;
+  const svg = el("svg", {width: W, height: H, viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label": title}, box);
+  // column labels, rotated
+  cols.forEach((c, k) => {
+    const x = x0 + k*cw + cw/2 + 4, y = y0 - 6;
+    const t = taxText(svg, {transform:`translate(${x},${y}) rotate(-90)`, "font-size":12}, c, colKind === "species" ? "species" : "plain");
+  });
+  const tl = el("text", {x: x0 + cols.length*cw + 8, y: y0 - 6, "font-size":11.5, class:"mu"}, svg); tl.textContent = "Total";
+  // column groups
+  if(groupOf){
+    const runs = []; cols.forEach((c, k) => { const g = groupOf(c) || ""; if(runs.length && runs[runs.length-1].g === g) runs[runs.length-1].b = k; else runs.push({g, a:k, b:k}); });
+    runs.forEach(r => { if(!r.g) return;
+      const xa = x0 + r.a*cw + 3, xb = x0 + (r.b+1)*cw - 3;
+      el("line", {x1:xa, x2:xb, y1:grpH-4, y2:grpH-4, stroke:css("--axis"), "stroke-width":1.5}, svg);
+      const parts = r.g.replace(" (", "\n(").split("\n");
+      parts.forEach((p, i) => { const e = el("text", {x:(xa+xb)/2, y: grpH - 10 - (parts.length-1-i)*13, "text-anchor":"middle", "font-size":11.5, class:"t2"}, svg); e.textContent = p; });
+      if(r.b < cols.length - 1) el("line", {x1: x0+(r.b+1)*cw, x2: x0+(r.b+1)*cw, y1:y0, y2:y0+fams.length*ch, stroke:css("--axis"), "stroke-width":1.5}, svg);
+    });
+  }
+  // genome type bands
+  typeRuns(fams).forEach(r => {
+    const ya = y0 + r.a*ch + 2, yb = y0 + (r.b+1)*ch - 2;
+    el("rect", {x:2, y:ya, width:5, height:yb-ya, rx:2, fill:typeColor(r.t)}, svg);
+    bandLabel(svg, r.t, ya, yb);
+    if(r.b < fams.length - 1) el("line", {x1:band, x2:x0 + cols.length*cw, y1:yb+2, y2:yb+2, stroke:css("--axis"), "stroke-width":1.5}, svg);
+  });
+  fams.forEach((f, i) => {
+    const y = y0 + i*ch;
+    taxText(svg, {x: x0 - 8, y: y + ch/2 + 4, "text-anchor":"end", "font-size":12.5}, f, "family");
+    let tot = 0;
+    cols.forEach((c, k) => {
+      const v = cnt[f + "\t" + c] || 0; tot += v;
+      const x = x0 + k*cw;
+      if(!v){ el("rect", {x:x+1, y:y+1, width:cw-2, height:ch-2, rx:2, fill:css("--empty")}, svg); return; }
+      const b = binOf(v);
+      const r = el("rect", {x:x+1, y:y+1, width:cw-2, height:ch-2, rx:3, fill:css("--h"+(b+1))}, svg);
+      const t = el("text", {x:x+cw/2, y:y+ch/2+4, "text-anchor":"middle", "font-size":11.5, style:`fill:${css("--hi"+(b+1))}`, "pointer-events":"none"}, svg);
+      t.textContent = v;
+      const label = colKind === "species" ? spName(c) : c;
+      interactive(r, `${f}, ${label}: ${v} loci`,
+        ev => showTip(ev, `${v} ${v === 1 ? "locus" : "loci"}`, [f, label, D.family_type[f]]),
+        () => pick(`${f} · ${label}`, loci.filter(l => l.family_label === f && colOf(l) === c)));
+    });
+    const e = el("text", {x: x0 + cols.length*cw + 8, y: y + ch/2 + 4, "font-size":12, class:"t2"}, svg); e.textContent = tot;
+  });
+  table(tableSel, ["Family","Genome type",...cols.map(c => colKind === "species" ? spName(c) : c),"Total"],
+    fams.map(f => { const vals = cols.map(c => cnt[f+"\t"+c]||0);
+      return [{v:f, it:ITAL.test(f)}, D.family_type[f], ...vals.map(v => ({v, n:true})), {v: vals.reduce((a,b)=>a+b,0), n:true}]; }));
+}
+
+/* ---------- 4. identity strip ---------- */
+function hash(s){ let h = 2166136261; for(const ch of s){ h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return ((h>>>0) % 1000) / 1000; }
+function median(v){ const s = [...v].sort((a,b)=>a-b), n = s.length; return n % 2 ? s[(n-1)/2] : (s[n/2-1] + s[n/2]) / 2; }
+function renderStrip(loci){
+  const box = $("#c-id"); box.replaceChildren();
+  const fams = D.families.filter(f => loci.some(l => l.family_label === f && l.pident != null));
+  const hmmOnly = D.families.filter(f => !fams.includes(f) && loci.some(l => l.family_label === f));
+  if(!fams.length){ const p = document.createElement("p"); p.className = "sub"; p.textContent = "No loci with a DIAMOND hit in this view."; box.appendChild(p); $("#t-id").replaceChildren(); return; }
+  const W = Math.max(360, box.clientWidth || 800);
+  const famW = Math.min(230, measure(fams, 12.5, true) + 14), band = 26, rh = 30, nW = W >= 560 ? 150 : 64;
+  const x0 = band + famW, plotW = W - x0 - nW - 10, y0 = 10;
+  const sx = v => x0 + (v - 15) / 85 * plotW;
+  const H = y0 + fams.length * rh + 40;
+  const svg = el("svg", {width:W, height:H, viewBox:`0 0 ${W} ${H}`, role:"img", "aria-label":"Amino-acid identity to the closest viral protein, per family"}, box);
+  [20,30,40,50,60,70,80,90,100].forEach(t => {
+    el("line", {x1:sx(t), x2:sx(t), y1:y0, y2:y0+fams.length*rh, stroke:css("--grid"), "stroke-width":1}, svg);
+    if(plotW < 360 && t % 20) return;
+    const e = el("text", {x:sx(t), y:y0+fams.length*rh+16, "text-anchor":"middle", "font-size":11.5, class:"mu"}, svg); e.textContent = t;
+  });
+  const ax = el("text", {x:x0+plotW/2, y:H-6, "text-anchor":"middle", "font-size":12, class:"t2"}, svg);
+  ax.textContent = "Amino-acid identity to the closest viral protein (%)";
+  typeRuns(fams).forEach(r => {
+    const ya = y0 + r.a*rh + 2, yb = y0 + (r.b+1)*rh - 2;
+    el("rect", {x:2, y:ya, width:5, height:yb-ya, rx:2, fill:typeColor(r.t)}, svg);
+    bandLabel(svg, r.t, ya, yb);
+    if(r.b < fams.length - 1) el("line", {x1:band, x2:x0+plotW, y1:yb+2, y2:yb+2, stroke:css("--axis"), "stroke-width":1.5}, svg);
+  });
+  const rowsT = [];
+  fams.forEach((f, i) => {
+    const cy = y0 + i*rh + rh/2;
+    taxText(svg, {x:x0-8, y:cy+4, "text-anchor":"end", "font-size":12.5}, f, "family");
+    const L = loci.filter(l => l.family_label === f);
+    const vals = L.filter(l => l.pident != null);
+    const sem = L.length - vals.length;
+    vals.forEach(l => {
+      const x = sx(Math.max(15, l.pident)), y = cy + (hash(l.species + l.orf) - 0.5) * 16;
+      const g = el("g", {}, svg);
+      el("circle", {cx:x, cy:y, r:4.5, fill:typeColor(D.family_type[f]), stroke:css("--surface"), "stroke-width":1.5}, g);
+      el("circle", {cx:x, cy:y, r:10, fill:"transparent"}, g);
+      interactive(g, `${spName(l.species)} ${l.orf}: ${l.pident}% identity`,
+        ev => showTip(ev, `${l.pident}% identity`, [spName(l.species), `${l.locus} · ${l.orf}`, l.product || f], typeColor(D.family_type[f])),
+        () => pick(`${f} · ${spName(l.species)} · ${l.orf}`, [l]));
+    });
+    let med = "";
+    if(vals.length >= 3){ med = median(vals.map(l => l.pident));
+      el("line", {x1:sx(med), x2:sx(med), y1:cy-12, y2:cy+12, stroke:css("--text"), "stroke-width":2.5, "stroke-linecap":"round", "pointer-events":"none"}, svg); }
+    const n = el("text", {x: x0 + plotW + 10, y: cy+4, "font-size":12, class:"t2"}, svg);
+    n.textContent = nW > 100 ? `n = ${vals.length}${sem ? ` · ${sem} without hit` : ""}` : `${vals.length}${sem ? `+${sem}` : ""}`;
+    rowsT.push([{v:f, it:ITAL.test(f)}, D.family_type[f], {v:vals.length, n:true}, {v:sem, n:true},
+      {v: vals.length ? Math.min(...vals.map(l=>l.pident)) : "", n:true}, {v: med === "" ? "" : Math.round(med*10)/10, n:true},
+      {v: vals.length ? Math.max(...vals.map(l=>l.pident)) : "", n:true}]);
+  });
+  hmmOnly.forEach(f => { const n = loci.filter(l => l.family_label === f).length;
+    rowsT.push([{v:f, it:ITAL.test(f)}, D.family_type[f], {v:0, n:true}, {v:n, n:true}, "", "", ""]); });
+  if(hmmOnly.length){
+    const n = hmmOnly.reduce((a, f) => a + loci.filter(l => l.family_label === f).length, 0);
+    const p = document.createElement("p"); p.className = "sub";
+    p.textContent = `Not plotted: ${n} loci in ${hmmOnly.length} families with HMM evidence only (in the table).`;
+    box.appendChild(p);
+  }
+  table("#t-id", ["Family","Genome type","With identity","Without hit","Min %","Median %","Max %"], rowsT);
+}
+
+/* ---------- tables ---------- */
+function table(sel, head, rows){
+  const box = $(sel); box.replaceChildren();
+  const t = document.createElement("table"), th = document.createElement("thead"), tr = document.createElement("tr");
+  head.forEach((h, i) => { const c = document.createElement("th"); c.textContent = h;
+    if(rows.length && rows[0][i] && rows[0][i].n) c.className = "n"; tr.appendChild(c); });
+  th.appendChild(tr); t.appendChild(th);
+  const tb = document.createElement("tbody");
+  rows.forEach(r => { const row = document.createElement("tr");
+    r.forEach(c => { const td = document.createElement("td"); const o = (c && typeof c === "object") ? c : {v:c};
+      td.textContent = o.v === undefined || o.v === null ? "" : (o.n && typeof o.v === "number" ? fmt(o.v) : o.v);
+      if(o.n) td.className = "n"; if(o.it) td.className = (td.className + " it").trim(); row.appendChild(td); });
+    tb.appendChild(row); });
+  t.appendChild(tb); box.appendChild(t);
+}
+function renderSelection(){
+  const all = !state.sel; const L = all ? inView() : state.sel.loci;
+  const desc = $("#sel-desc"); desc.replaceChildren();
+  const b = document.createElement("b"); b.textContent = `${L.length} ${L.length === 1 ? "locus" : "loci"}`;
+  desc.append(b, document.createTextNode(all ? " in the current view" : ` · ${state.sel.title}`));
+  $("#sel-clear").hidden = all;
+  const rows = [...L].sort((a,b) => D.species.indexOf(a.species) - D.species.indexOf(b.species) || a.locus.localeCompare(b.locus))
+    .map(l => [{v:spName(l.species), it:true}, l.locus, l.orf, {v:l.family_label, it:ITAL.test(l.family_label)}, l.genome_type,
+               l.protein_class, {v: l.pident == null ? "" : l.pident, n:true}, l.product, l.group]);
+  table("#t-sel", ["Species","Locus","ORF","Family","Genome type","Protein class","% id","Best viral hit","Evidence"], rows);
+}
+
+/* ---------- page ---------- */
+function renderAll(){
+  const loci = inView();
+  const sp = speciesInView();
+  $("#f-count").textContent = `${loci.length} of ${D.loci.length} loci`;
+  renderBars(loci);
+  renderHeat("#c-fam-sp", "#t-fam-sp", loci, sp.filter(s => loci.some(l => l.species === s)), l => l.species, "species",
+             s => D.host_group[s], "Approved EVE loci per viral family and host species");
+  renderHeat("#c-fam-cl", "#t-fam-cl", loci, D.classes.filter(c => loci.some(l => l.protein_class === c)), l => l.protein_class,
+             "plain", null, "Approved EVE loci per viral family and protein class");
+  renderStrip(loci);
+  renderSelection();
+}
+function facts(){
+  const ul = $("#facts");
+  const items = [[fmt(D.loci.length), "approved loci"], [D.species.length, "host species"],
+                 [D.families.length, "family rows"], [fmt(D.n_removed), "ORFs removed in curation"]];
+  items.forEach(([v, t]) => { const li = document.createElement("li"); const b = document.createElement("b"); b.textContent = v;
+    li.append(b, document.createTextNode(" " + t)); ul.appendChild(li); });
+  $("#foot").textContent = `Run ${D.run} · generated ${D.generated.replace("T", " ")} by PLANCUS (eve-tool figures) from the curation state. ` +
+    `Genome type from the NCBI lineage of the curated family; loci left at realm level or without a family are Unassigned.`;
+}
+$("#sel-clear").addEventListener("click", () => { state.sel = null; renderSelection(); });
+setupFilters(); legends(); facts(); renderAll();
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { hideTip(); renderAll(); }, 150); });
+})();
+</script>

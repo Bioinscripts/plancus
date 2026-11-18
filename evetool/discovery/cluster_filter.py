@@ -2,7 +2,25 @@ import os
 import subprocess
 from pathlib import Path
 
-def remover_redundancia(pep_fasta: str, diretorio_saida: str, identidade: float = 0.9, cobertura: float = 0.9) -> str:
+def _memoria_disponivel() -> str:
+    """
+    Most of the available RAM, as an MMseqs2 BYTE string. Left to itself MMseqs2 takes the
+    whole machine, and a large genome (a few million ORFs) gets the process killed before
+    the clustering ends. Returns an empty string when the amount cannot be read.
+    """
+    try:
+        with open("/proc/meminfo") as fh:
+            for linha in fh:
+                if linha.startswith("MemAvailable:"):
+                    gb = int(int(linha.split()[1]) * 0.7) // (1024 * 1024)
+                    return f"{gb}G" if gb >= 1 else ""
+    except OSError:
+        pass
+    return ""
+
+
+def remover_redundancia(pep_fasta: str, diretorio_saida: str, identidade: float = 0.9,
+                        cobertura: float = 0.9, threads: int = None) -> str:
     """
     Run MMseqs2 to collapse highly similar proteins and return the path of the
     FASTA file holding the unique representatives.
@@ -26,7 +44,14 @@ def remover_redundancia(pep_fasta: str, diretorio_saida: str, identidade: float 
         # together with the representative when that one has no viral hit.
         "--cov-mode", "0"
     ]
-    
+    # Memory and cores: both default to everything the machine has, which on a large genome
+    # ends in the process being killed. Neither changes the clusters, only how they are reached.
+    limite = _memoria_disponivel()
+    if limite:
+        comando_mmseqs += ["--split-memory-limit", limite]
+    if threads:
+        comando_mmseqs += ["--threads", str(threads)]
+
     try:
         subprocess.run(
             comando_mmseqs,

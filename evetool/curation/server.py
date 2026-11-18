@@ -5,6 +5,13 @@ Local server for the EVE page: curation and overview charts on one page.
   GET  /, /index.html, /curadoria.html -> the page, always read from evetool/curation/web/curation.html,
                            so an edit to its code (colours, layout) shows on reload without
                            touching the data
+  GET  /v2, /curation_v2.html -> the same tool with the report layout (web/curation_v2.html): per-EVE
+                           cards and the read heatmaps; the page above stays as it is
+  GET  /api/rnaseq-matrix -> ?sp=: every approved locus x RNA-seq sample (exonic reads, depth, strands)
+  GET  /api/srna-matrix -> ?sp=: every approved locus x small RNA library (sRNAProfiler features and
+                           the piRNA-sized reads per strand: 5' U, A10, ping-pong)
+  GET  /api/eve-spacing -> gap from every approved locus to the nearest one of its genome, per species,
+                           against random placement on the assembly (comparative/eve_spacing.py)
   GET  /api/candidates  -> classified EVEs, curation state, review flags and sequence metrics
   GET  /api/state       -> version stamp of the data on disk (the page polls it to refresh itself)
   GET  /api/detail      -> inspect one EVE: position, neighbours, GC and alignments
@@ -12,12 +19,29 @@ Local server for the EVE page: curation and overview charts on one page.
   GET  /api/rnaseq      -> binned RNA-seq depth of every sample over ?sp=&c=&s=&e= (0-based) [&focus=a-b,...]
   GET  /api/rnaseq-samples -> RNA-seq BAMs known per species
   POST /api/rnaseq-bam  -> add ({species, bam, library}) or remove ({op: "remove", species, name}) a BAM
+  POST /api/rnaseq-map  -> map long / other RNA reads with minimap2, as ViralQuest ({species, r1, r2, read_type,
+                           library, reference, flank}); runs in the background
+  GET  /api/srna        -> small RNA reads over ?sp=&c=&s=&e= [&focus=a-b:strand,...]: depth by size class and
+                           the sRNAProfiler features of each span
+  GET  /api/srna-libraries -> small RNA libraries per species
+  POST /api/srna-library -> map trimmed small RNA reads with Bowtie1 ({species, reads, name, ncrna_index}),
+                           register a BAM ({species, bam}) or forget one ({op: "remove", species, name})
+  GET  /api/dna         -> genomic DNA reads over every locus: depth, breadth, junction and empty-site reads per
+                           library (raw measurements; presence / absence is called on the page)
+  POST /api/dna-library -> map DNA reads with minimap2 on the whole genome, keeping the EVE windows ({species, r1,
+                           r2, read_type, role: assembly|population, sample_type: individual|pool, group, name}),
+                           register a BAM (r1 ending in .bam, or {bam}), edit ({op: "edit", ...}) or forget one
+  GET  /api/map-jobs    -> the read-mapping jobs of this session and the step each one is in
+  GET  /api/primers     -> Primer3 pairs for an EVE (?q=<query>) or a region (?sp=&c=&s=&e=, 0-based):
+                           internal and junction (EVE + host flank)
   POST /api/export      -> save a chart as SVG and, when possible, convert it to PDF
+  GET  /api/circulating -> circulating-virus sets and the last composition analysis (codon_composition.py)
   POST /api/regions     -> multi-FASTA of several genome regions (copy / download FASTA)
   POST /api/curation    -> save the selection and run the requested action:
                            save | fasta_nt | fasta_pep | annotate_hmm | cluster |
                            multispecies | context | metrics | repeats | cdsearch | pfam |
-                           tblastn_scan
+                           tblastn_scan | circ_add | circ_remove | circ_run | circ_gff |
+                           primers_tsv | srna_tsv | dna_tsv | host_genes
 
 After every change the data snapshot (12_dashboard_web/dados/snapshot.js) is rewritten, so the
 page also opens with its data straight from disk. The old review page (revisao.html) is gone:
@@ -37,6 +61,7 @@ import threading
 import traceback
 
 PAGINAS = ("/", "/index.html", "/curadoria.html")
+PAGINAS_V2 = ("/v2", "/v2/", "/curation_v2.html")
 _estado = {"outdir": ".", "rodando": False, "acao": None, "ultimo_resumo": None, "base_code": "", "threads": 4,
           "blastx": None}      # online BLASTX runs in its own thread: it can take hours at NCBI
 _trava = threading.Lock()
@@ -121,8 +146,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(dados)
 
-    def _pagina(self):
-        caminho = os.path.join(_estado["base_code"], "web", "curation.html")
+    def _pagina(self, arquivo: str = "curation.html"):
+        caminho = os.path.join(_estado["base_code"], "web", arquivo)
         corpo = open(caminho, "rb").read()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -141,6 +166,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         rota = self.path.split("?")[0]
         if rota in PAGINAS:
             return self._pagina()
+        if rota in PAGINAS_V2:
+            if rota != "/curation_v2.html":     # relative links (api/..., dados/...) must resolve at the root
+                self.send_response(302)
+                self.send_header("Location", "/curation_v2.html" + (self.path[len(rota):] or ""))
+                self.end_headers()
+                return
+            return self._pagina("curation_v2.html")
+        if rota == "/api/eve-spacing":
+            from urllib.parse import parse_qs, urlparse
+            juntar = (parse_qs(urlparse(self.path).query).get("merge") or ["0"])[0]
+            try:
+                return self._json(200, _importar("evetool.comparative.eve_spacing").distancias(
+                    _estado["outdir"], juntar=int(juntar) if juntar.isdigit() else 0))
+            except Exception as erro:
+                return self._json(500, {"error": str(erro), "trace": traceback.format_exc()[-1500:]})
+        if rota in ("/api/rnaseq-matrix", "/api/srna-matrix"):
+            from urllib.parse import parse_qs, urlparse
+            sp = (parse_qs(urlparse(self.path).query).get("sp") or [""])[0]
+            modulo = "evetool.annotation.rnaseq_tracks" if rota == "/api/rnaseq-matrix" else "evetool.annotation.srna"
+            try:
+                return self._json(200, _importar(modulo).matriz(_estado["outdir"], sp))
+            except Exception as erro:
+                return self._json(500, {"error": str(erro), "trace": traceback.format_exc()[-1500:]})
         if rota == "/revisao.html":
             self.send_response(302)
             self.send_header("Location", "curation.html#review")
@@ -165,7 +213,45 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if not q:
                 return self._json(400, {"error": "provide ?q=<query>"})
             try:
-                return self._json(200, _importar("evetool.curation.curation").detalhar_eve(_estado["outdir"], q))
+                cur = _importar("evetool.curation.curation")
+                detalhe = cur.detalhar_eve(_estado["outdir"], q)
+                # verdict of this candidate (the inspection opens in its own tab, without the table)
+                estado = cur.listar_candidatas(_estado["outdir"])
+                todos = estado["items"]
+                it = next((i for i in todos if i["query"] == q), None)
+                if it and isinstance(detalhe, dict):
+                    # the row of the candidate table, as saved, and the lists its two selects offer
+                    detalhe["record"] = it
+                    detalhe["lists"] = {k: estado.get(k) or [] for k in ("classes", "custom_classes", "families", "custom_families")}
+                    detalhe["verdict"] = {k: it.get(k) for k in ("verdict", "detection", "viral_scope", "auto_reject", "read_support", "simple_seq",
+                                                                 "verdict_for", "verdict_against")}
+                    detalhe.update(query=q, locus=it["locus"], ctx_cluster=it["ctx_cluster"],
+                                   saved_state={"removed": it["removed_flag"], "qualified": it["qualified"]})
+                    # neighbours: one per locus (its representative frame), with what the page needs to
+                    # show them as a cluster and open them; other frames of this EVE's own locus are left out
+                    por_orf = {i["orf"]: i for i in todos if i["species"] == it["species"]}
+                    vistos, lista = set(), []
+                    for v in detalhe.get("neighbours") or []:
+                        n = por_orf.get(v["orf"])
+                        if not n or n["locus"] == it["locus"]:
+                            continue
+                        rep = next((x for x in por_orf.values() if x["locus"] == n["locus"] and x["locus_representative"]), n)
+                        if rep["query"] in vistos:
+                            continue
+                        vistos.add(rep["query"])
+                        ini = min(x["start"] for x in por_orf.values() if x["locus"] == n["locus"])
+                        fim = max(x["end"] for x in por_orf.values() if x["locus"] == n["locus"])
+                        dist = 0 if (ini < detalhe["end"] and fim > detalhe["start"]) else (
+                            ini - detalhe["end"] if ini >= detalhe["end"] else detalhe["start"] - fim)
+                        lista.append({"orf": rep["orf"], "query": rep["query"], "start": ini, "end": fim,
+                                      "strand": rep["strand"], "distance": dist, "family": rep["family"],
+                                      "protein_class": rep["protein_class"], "verdict": rep["verdict"],
+                                      "ctx_cluster": rep["ctx_cluster"], "same_cluster": bool(rep["ctx_cluster"])
+                                      and rep["ctx_cluster"] == it["ctx_cluster"],
+                                      "removed": rep["removed_flag"], "qualified": rep["qualified"]})
+                    detalhe["neighbours"] = sorted(lista, key=lambda v: v["start"])
+                    detalhe["n_neighbours"] = len(lista)
+                return self._json(200, detalhe)
             except Exception as erro:
                 return self._json(500, {"error": str(erro), "trace": traceback.format_exc()[-1500:]})
         if rota == "/api/protein-map":
@@ -204,8 +290,66 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     int(q.get("bins") or 600), foco, int(q.get("mapq") or 0)))
             except Exception as erro:
                 return self._json(500, {"error": str(erro), "trace": traceback.format_exc()[-1500:]})
+        if rota == "/api/srna-libraries":
+            try:
+                return self._json(200, _importar("evetool.annotation.srna").resumo(_estado["outdir"]))
+            except Exception as erro:
+                return self._json(500, {"error": str(erro)})
+        if rota == "/api/srna":
+            from urllib.parse import parse_qs, urlparse
+            q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+            try:
+                foco = []
+                for f in q.get("focus", "").split(","):
+                    faixa, _, fita = f.partition(":")
+                    if "-" in faixa:
+                        a, b = faixa.split("-")
+                        foco.append([int(a), int(b), fita or "."])
+                return self._json(200, _importar("evetool.annotation.srna").perfil(
+                    _estado["outdir"], q.get("sp", ""), q["c"], int(q["s"]), int(q["e"]),
+                    int(q.get("bins") or 600), foco))
+            except Exception as erro:
+                return self._json(500, {"error": str(erro), "trace": traceback.format_exc()[-1500:]})
+        if rota == "/api/dna":
+            # genomic DNA reads over every locus: raw measurements, the call is made on the page
+            try:
+                return self._json(200, _importar("evetool.annotation.dna_reads").medir(_estado["outdir"]))
+            except Exception as erro:
+                return self._json(500, {"error": str(erro), "trace": traceback.format_exc()[-1500:]})
+        if rota == "/api/map-jobs":
+            return self._json(200, {"jobs": _importar("evetool.annotation.read_jobs").situacao()})
+        if rota == "/api/primers":
+            from urllib.parse import parse_qs, urlparse
+            q = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+            try:
+                pr = _importar("evetool.curation.primers")
+                faixa = lambda ch: tuple(int(x) for x in q[ch].split("-")) if q.get(ch) else None
+                opcoes = {"flank": q.get("flank"), "n": q.get("pairs"), "internal_size": faixa("isize"),
+                          "junction_size": faixa("jsize"),
+                          "avoid_masked": q.get("masked", "1") != "0"}
+                if q.get("tm"):
+                    t = float(q["tm"])
+                    opcoes["tm"] = (t - 3.0, t, t + 3.0)
+                if q.get("q"):
+                    cur = _importar("evetool.curation.curation")
+                    it = next((i for i in cur.listar_candidatas(_estado["outdir"])["items"] if i["query"] == q["q"]), None)
+                    if not it or not it["end"]:
+                        return self._json(404, {"error": f"{q['q']}: no coordinates for this candidate"})
+                    alvo = (it["species"], it["contig"], it["start"], it["end"], it["orf"])
+                else:
+                    alvo = (q.get("sp", ""), q["c"], int(q["s"]), int(q["e"]), q.get("n", ""))
+                return self._json(200, pr.para_regiao(_estado["outdir"], *alvo, opcoes=opcoes))
+            except ImportError:
+                return self._json(500, {"error": "primer3-py is not installed (pip install primer3-py)"})
+            except Exception as erro:
+                return self._json(500, {"error": str(erro), "trace": traceback.format_exc()[-1500:]})
         if rota == "/api/blastx":
             return self._json(200, _situacao_blastx())
+        if rota == "/api/circulating":
+            try:
+                return self._json(200, _importar("evetool.comparative.codon_composition").carregar(_estado["outdir"]))
+            except Exception as erro:
+                return self._json(500, {"error": str(erro), "trace": traceback.format_exc()[-1500:]})
         if rota == "/api/download":
             from urllib.parse import parse_qs, urlparse
             alvo = (parse_qs(urlparse(self.path).query).get("f") or [""])[0]
@@ -241,6 +385,72 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     return self._json(200, rt.remover(_estado["outdir"], pedido.get("species", ""), pedido.get("name", "")))
                 return self._json(200, rt.adicionar(_estado["outdir"], pedido.get("species", ""), pedido.get("bam", ""),
                                                     pedido.get("library") or "unknown"))
+            except Exception as erro:
+                return self._json(400, {"error": str(erro)})
+        if rota in ("/api/rnaseq-map", "/api/srna-library"):
+            try:
+                tamanho = int(self.headers.get("Content-Length") or 0)
+                pedido = json.loads(self.rfile.read(tamanho) or b"{}")
+                jobs = _importar("evetool.annotation.read_jobs")
+                sp, threads, outdir = str(pedido.get("species") or ""), _estado["threads"], _estado["outdir"]
+                if rota == "/api/rnaseq-map":
+                    rt = _importar("evetool.annotation.rnaseq_tracks")
+                    r1 = str(pedido.get("r1") or "").strip()
+                    if not r1:
+                        return self._json(400, {"error": "give the path of the reads (FASTQ)"})
+                    job = jobs.iniciar("rna", sp, os.path.basename(r1), lambda passo: rt.mapear(
+                        outdir, sp, r1, str(pedido.get("r2") or ""), str(pedido.get("read_type") or "sr"),
+                        str(pedido.get("library") or "unknown"), str(pedido.get("reference") or "genome"),
+                        int(pedido.get("flank") or 20000), str(pedido.get("name") or ""), threads, passo))
+                    return self._json(200, {"job": job})
+                sr = _importar("evetool.annotation.srna")
+                if pedido.get("op") == "remove":
+                    return self._json(200, sr.remover(outdir, sp, str(pedido.get("name") or "")))
+                reads, bam = str(pedido.get("reads") or "").strip(), str(pedido.get("bam") or "").strip()
+                if not reads and not bam:
+                    return self._json(400, {"error": "give the path of the trimmed reads (FASTQ/FASTA) or of a BAM"})
+                if reads.lower().endswith(".bam"):
+                    reads, bam = "", reads
+                if bam:
+                    job = jobs.iniciar("srna", sp, os.path.basename(bam), lambda passo: sr.adicionar_bam(
+                        outdir, sp, bam, str(pedido.get("name") or ""), passo))
+                else:
+                    job = jobs.iniciar("srna", sp, os.path.basename(reads), lambda passo: sr.mapear(
+                        outdir, sp, reads, str(pedido.get("name") or ""), threads,
+                        str(pedido.get("ncrna_index") or ""), passo))
+                return self._json(200, {"job": job})
+            except Exception as erro:
+                return self._json(400, {"error": str(erro)})
+        if rota == "/api/dna-library":
+            try:
+                tamanho = int(self.headers.get("Content-Length") or 0)
+                pedido = json.loads(self.rfile.read(tamanho) or b"{}")
+                jobs = _importar("evetool.annotation.read_jobs")
+                dn = _importar("evetool.annotation.dna_reads")
+                sp, threads, outdir = str(pedido.get("species") or ""), _estado["threads"], _estado["outdir"]
+                nome = str(pedido.get("name") or "")
+                if pedido.get("op") == "remove":
+                    return self._json(200, dn.remover(outdir, sp, nome))
+                if pedido.get("op") == "edit":
+                    return self._json(200, dn.editar(outdir, sp, nome, role=pedido.get("role"),
+                                                     sample_type=pedido.get("sample_type"), group=pedido.get("group")))
+                tipo = str(pedido.get("sample_type") or "individual")
+                papel = str(pedido.get("role") or "population")
+                grupo = str(pedido.get("group") or "")
+                dn._validar(tipo, papel)
+                r1, bam = str(pedido.get("r1") or "").strip(), str(pedido.get("bam") or "").strip()
+                if r1.lower().endswith(".bam"):
+                    r1, bam = "", r1
+                if not r1 and not bam:
+                    return self._json(400, {"error": "give the path of the DNA reads (FASTQ) or of a BAM"})
+                if bam:
+                    job = jobs.iniciar("dna", sp, nome or os.path.basename(bam), lambda passo: dn.adicionar_bam(
+                        outdir, sp, bam, nome, tipo, papel, grupo, str(pedido.get("read_type") or "sr"), passo))
+                else:
+                    job = jobs.iniciar("dna", sp, nome or os.path.basename(r1), lambda passo: dn.mapear(
+                        outdir, sp, r1, str(pedido.get("r2") or ""), str(pedido.get("read_type") or "sr"), nome,
+                        tipo, papel, grupo, threads, passo))
+                return self._json(200, {"job": job})
             except Exception as erro:
                 return self._json(400, {"error": str(erro)})
         if rota == "/api/regions":
@@ -321,7 +531,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                families=families if isinstance(families, dict) else None,
                                familias_novas=familias_novas,
                                tblastn_removed=pedido.get("tblastn_removed")
-                               if isinstance(pedido.get("tblastn_removed"), list) else None)
+                               if isinstance(pedido.get("tblastn_removed"), list) else None,
+                               removed_via=pedido.get("removed_via")
+                               if isinstance(pedido.get("removed_via"), dict) else None,
+                               qualified=pedido.get("qualified")
+                               if isinstance(pedido.get("qualified"), list) else None,
+                               host_genes_removed=pedido.get("host_genes_removed")
+                               if isinstance(pedido.get("host_genes_removed"), list) else None)
             resposta = {"action": acao, "removed": len(set(removed))}
 
             if acao in ("fasta_nt", "fasta_pep"):
@@ -373,8 +589,53 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 resposta.update(cur.rodar_repeticoes(_estado["outdir"], threads=_estado["threads"],
                                                      flanco=int(pedido.get("repeats_flank") or 20000),
                                                      queries=selecionados))
+            elif acao == "primers_tsv":
+                from urllib.parse import quote
+                o = pedido.get("primer_options") or {}
+                res = _importar("evetool.curation.primers").para_aprovadas(
+                    _estado["outdir"], queries=selecionados,
+                    opcoes={k: (tuple(v) if isinstance(v, list) else v) for k, v in o.items()})
+                resposta.update(res)
+                resposta["download"] = "api/download?f=" + quote(os.path.abspath(res["file"]))
+            elif acao == "srna_tsv":
+                from urllib.parse import quote
+                res = _importar("evetool.annotation.srna").tabela_aprovadas(_estado["outdir"], queries=selecionados)
+                resposta.update(res)
+                resposta["download"] = "api/download?f=" + quote(os.path.abspath(res["file"]))
+            elif acao == "host_genes":
+                prots = [str(p) for p in pedido.get("host_proteomes") or [] if p]
+                resposta.update(cur.rodar_genes_hospedeiro(_estado["outdir"], prots,
+                                                           float(pedido.get("host_evalue") or 1e-5), _estado["threads"]))
+            elif acao == "dna_tsv":
+                from urllib.parse import quote
+                res = _importar("evetool.annotation.dna_reads").tabela(_estado["outdir"])
+                resposta.update(res)
+                resposta["download"] = "api/download?f=" + quote(os.path.abspath(res["file"]))
             elif acao == "metrics":
                 resposta.update(cur.rodar_metricas(_estado["outdir"], threads=_estado["threads"]))
+            elif acao in ("circ_add", "circ_remove", "circ_run", "circ_gff"):
+                cc = _importar("evetool.comparative.codon_composition")
+                if acao == "circ_add":
+                    resposta["set"] = cc.adicionar_conjunto(
+                        _estado["outdir"], pedido.get("circ_fasta") or "", nome=pedido.get("circ_name") or "",
+                        tipo=pedido.get("circ_kind") or "circulating", familia_padrao=pedido.get("circ_family") or "",
+                        familia_auto=bool(pedido.get("circ_auto_family", True)), threads=_estado["threads"])
+                elif acao == "circ_remove":
+                    resposta.update(cc.remover_conjunto(_estado["outdir"], str(pedido.get("circ_set") or "")))
+                elif acao == "circ_gff":
+                    resposta.update(cc.definir_gff(_estado["outdir"], str(pedido.get("circ_species") or ""),
+                                                   str(pedido.get("circ_gff_path") or "")))
+                else:
+                    o = pedido.get("circ_options") or {}
+                    r = cc.analisar(_estado["outdir"], top=int(o.get("top") or 6),
+                                    discriminar=str(o.get("discriminate") or "family_circ"),
+                                    conjunto_features=str(o.get("feature_set") or "top"), ajuste=str(o.get("fit") or "all"),
+                                    min_codons=int(o.get("min_codons") or 0), max_por_especie=int(o.get("max_per_species") or 0),
+                                    max_hospedeiro=int(o.get("max_host") or 0), classe=str(o.get("protein_class") or ""),
+                                    incluir_orf=bool(o.get("include_orf_frame")), perplexidade=float(o.get("perplexity") or 30),
+                                    hospedeiro_anotacao=bool(o.get("host_annotation", True)),
+                                    flanco_vizinhos=int(o.get("neighbour_flank") or 50000))
+                    resposta.update({k: r.get(k) for k in ("counts", "excluded", "messages", "used_features", "amelioration")})
             elif acao != "save":
                 return self._json(400, {"error": f"unknown action: {acao}"})
 
@@ -431,7 +692,7 @@ def main():
     socketserver.ThreadingTCPServer.daemon_threads = True
     try:
         with socketserver.ThreadingTCPServer(("127.0.0.1", args.port), Handler) as httpd:
-            print(f"EVE page (curation + overview): http://127.0.0.1:{args.port}/")
+            print(f"PLANCUS · EVE page (curation + overview): http://127.0.0.1:{args.port}/")
             print(f"Results used by the re-analysis: {_estado['outdir']}")
             print("Press Ctrl+C to stop.")
             httpd.serve_forever()

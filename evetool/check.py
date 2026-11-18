@@ -29,12 +29,14 @@ FERRAMENTAS = [
     ("rpsblast", False, "CD-Search, local mode"),
     ("hmmscan", False, "Pfam annotation"),
     ("datasets", False, "NCBI genome download from GCA_/GCF_ accessions"),
-    ("hisat2", False, "RNA-seq coverage (short reads)"),
-    ("minimap2", False, "RNA-seq coverage (long reads)"),
+    ("minimap2", False, "long / other RNA read mapping and coverage"),
+    ("bowtie", False, "small RNA read mapping (sRNAProfiler method)"),
     ("zenity", False, "folder dialog of open_curation.sh"),
 ]
 BIBLIOTECAS = [("Bio", True), ("pandas", True), ("numpy", True), ("scipy", True), ("matplotlib", True),
-               ("seaborn", True), ("networkx", True), ("requests", True), ("pyhmmer", True), ("pysam", False)]
+               ("seaborn", True), ("networkx", True), ("requests", True), ("pyhmmer", True), ("pysam", False),
+               ("primer3", False),   # primer suggestions on the curation page
+               ("sklearn", False)]   # t-SNE of the circulating-virus tab
 # (label, path, required, part of prepare.py)
 BANCOS = [
     ("viral DIAMOND", config.VIRAL_DMND, True, "bundle"),
@@ -87,6 +89,11 @@ def main():
         if estado != OK:
             faltam.add(parte)
         linha(estado, rot, cam)
+    print("\nNCBI")
+    estado = OK if config.NCBI_EMAIL else FALTA
+    erros += estado == FALTA
+    linha(estado, "contact e-mail", config.NCBI_EMAIL or
+          "export EVE_NCBI_EMAIL=you@institution.org, or `email` under [ncbi] in eve_config.ini")
 
     print()
     if erros:

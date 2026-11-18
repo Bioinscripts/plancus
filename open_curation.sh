@@ -61,16 +61,22 @@ mkdir -p "$RES/13_curadoria"
 PID=$!
 trap 'kill $PID 2>/dev/null' EXIT
 
-# Wait for the server to answer (it writes the snapshot before listening)
-for _ in $(seq 1 60); do
+# Wait for the server to answer (it writes the snapshot before listening, which takes a
+# while on large runs). The browser only opens once it answers, never on a dead port.
+PRONTO=0
+for _ in $(seq 1 600); do   # up to ~5 min
     if ! kill -0 $PID 2>/dev/null; then
         aviso "The server stopped while starting.\n\nLog: $LOG\n\n$(tail -n 8 "$LOG")"
         exit 1
     fi
-    "$PY" -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$PORTA/api/state', timeout=1)" \
-        2>/dev/null && break
+    if "$PY" -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$PORTA/api/state', timeout=1)" \
+        2>/dev/null; then PRONTO=1; break; fi
     sleep 0.5
 done
+if [ "$PRONTO" != 1 ]; then
+    aviso "The server did not answer after 5 minutes.\n\nLog: $LOG\n\n$(tail -n 8 "$LOG")"
+    exit 1
+fi
 
 URL="http://127.0.0.1:$PORTA/"
 if command -v xdg-open >/dev/null; then xdg-open "$URL" >/dev/null 2>&1 &

@@ -10,6 +10,10 @@ Each path is resolved in this order:
        results_dir = <data_dir>/Resultados
        pfam_hmm    = <data_dir>/Pfam/Pfam-A.hmm
 
+The contact e-mail sent to the NCBI with every Entrez request (their usage policy asks for
+a real address) is resolved the same way: --ncbi-email, then EVE_NCBI_EMAIL, then the
+[ncbi] email key of the config file. There is no default.
+
 Copy eve_config.example.ini to eve_config.ini and edit it, or run
 `./eve-tool config` to see the paths in use.
 """
@@ -36,6 +40,7 @@ HMM_DIR = _valor("hmm_dir", os.path.join(DATA_DIR, "Data_base_hmm_eves"))
 DIAMOND_DIR = _valor("diamond_dir", os.path.join(DATA_DIR, "DIAMOND"))
 RESULTS_DIR = _valor("results_dir", os.path.join(DATA_DIR, "Resultados"))
 PFAM_HMM = _valor("pfam_hmm", os.path.join(DATA_DIR, "Pfam", "Pfam-A.hmm"))
+NCBI_EMAIL = (os.environ.get("EVE_NCBI_EMAIL") or _ini.get("ncbi", "email", fallback="")).strip() or None
 
 
 # Standard database files inside those folders (written by prepare.py)
@@ -72,4 +77,5 @@ if __name__ == "__main__":
         for nome, valor in caminhos.items():
             existe = os.path.exists(valor) or os.path.exists(valor + ".pal") or os.path.exists(valor + ".rps")
             print(f"  {nome:12s} {valor}{'' if existe else '   [missing]'}")
+        print(f"  {'NCBI_EMAIL':12s} {NCBI_EMAIL or '[not set: EVE_NCBI_EMAIL or [ncbi] email in the config]'}")
         print("Full check of tools and databases: ./eve-tool check")

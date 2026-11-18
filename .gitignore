@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+
+# Paths of this machine (copy eve_config.example.ini)
+eve_config.ini
+
+# Local data and test pages
+*.log
+evetool/curation/web/zz_*.html
+.pixi/
+
+# Personal lists and notes of this machine
+local/
+*.egg-info/
+build/
+
+# Outputs of local tools
+graphify-out/
+M12CC_Out/

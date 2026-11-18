@@ -78,7 +78,8 @@ def classes_padrao() -> list:
 
 
 def salvar_selecao(outdir: str, removed, proteins: dict = None, classes_novas=None,
-                   families: dict = None, familias_novas=None, tblastn_removed=None) -> str:
+                   families: dict = None, familias_novas=None, tblastn_removed=None,
+                   removed_via: dict = None, qualified=None, host_genes_removed=None) -> str:
     """
     Store the curation state: rejected ORFs and, when the researcher overrides it by hand,
     the protein class assigned to each segment. Classes they create are recorded so they
@@ -95,6 +96,21 @@ def salvar_selecao(outdir: str, removed, proteins: dict = None, classes_novas=No
         # tblastn HSPs discarded by hand ("species|contig|ref|start|end"): the segments are rebuilt
         # from the HSPs at any distance, so the removal survives a change of the merge distance
         atual["tblastn_removed"] = sorted(set(map(str, tblastn_removed)))
+    if removed_via is not None:
+        # where a rejection came from, when not from the candidate table itself: "tblastn" or
+        # "cluster" ({query: source}). Restoring that segment or cluster brings the ORF back.
+        atual["removed_via"] = {str(k): str(v) for k, v in removed_via.items() if k in set(atual["removed"]) and v}
+    if host_genes_removed is not None:
+        # Host genes the researcher removed (validation/host_genes.py), each with the ORFs that
+        # hit it: kept whole, so the list for the methods survives a new search
+        atual["host_genes_removed"] = [g for g in host_genes_removed if isinstance(g, dict) and g.get("id")]
+        _gravar_genes_removidos(outdir, atual["host_genes_removed"])
+    if qualified is not None:
+        # EVEs the researcher inspected and kept ("qualified"): shown in light green on the page.
+        # A rejected ORF is never qualified.
+        atual["qualified"] = sorted(set(map(str, qualified)) - set(atual["removed"]))
+    else:
+        atual["qualified"] = sorted(set(atual.get("qualified", [])) - set(atual["removed"]))
     registradas = set(atual.get("custom_classes", [])) | set(classes_novas or [])
     registradas |= {v for v in atual.get("proteins", {}).values() if v not in classes_padrao()}
     atual["custom_classes"] = sorted(registradas)
@@ -110,6 +126,25 @@ def salvar_selecao(outdir: str, removed, proteins: dict = None, classes_novas=No
     return caminho_selecao(outdir)
 
 
+def _gravar_genes_removidos(outdir: str, genes: list) -> str:
+    """13_curadoria/host_genes/removed_host_genes.tsv: the host genes removed by hand, for the methods."""
+    pasta = os.path.join(outdir, SUBPASTA, "host_genes")
+    os.makedirs(pasta, exist_ok=True)
+    destino = os.path.join(pasta, "removed_host_genes.tsv")
+    cols = ["gene", "description", "organism", "proteome", "best_bitscore", "max_pident", "n_orfs", "orfs",
+            "n_orfs_rejected", "orfs_rejected", "removed_at"]
+    with open(destino, "w", newline="") as fh:
+        w = csv.writer(fh, delimiter="\t")
+        w.writerow(cols)
+        for g in genes:
+            orfs = [str(o) for o in g.get("orfs") or []]
+            w.writerow([g.get("gene", ""), g.get("description", ""), g.get("organism", ""), g.get("proteome", ""),
+                        g.get("best_bitscore", ""), "" if g.get("max_pident") is None else g.get("max_pident"),
+                        len(orfs), ";".join(orfs), len(g.get("rejected") or []),
+                        ";".join(str(o) for o in g.get("rejected") or []), g.get("removed_at", "")])
+    return destino
+
+
 def _exportar_anotadas(outdir: str) -> str:
     """TSV of the approved EVEs with the final class (automatic or hand-corrected)."""
     dados = listar_candidatas(outdir)
@@ -118,8 +153,8 @@ def _exportar_anotadas(outdir: str) -> str:
     destino_dir = os.path.join(outdir, SUBPASTA)
     os.makedirs(destino_dir, exist_ok=True)
     destino = os.path.join(destino_dir, "eves_curated_annotated.tsv")
-    cols = ["query", "species", "orf", "locus", "locus_representative", "contig", "start", "end",
-            "group", "conservation", "family", "family_manual",
+    cols = ["query", "species", "orf", "locus", "locus_representative", "contig", "start", "end", "qualified",
+            "group", "conservation", "verdict", "detection", "viral_scope", "read_support", "simple_sequence", "family", "family_manual",
             "protein_class", "class_manual", "product", "protein",
             "viral_bitscore", "cellular_bitscore", "pident", "qcov",
             "hmm_n_domains", "hmm_best_model", "hmm_best_score",
@@ -161,25 +196,33 @@ def listar_candidatas(outdir: str) -> dict:
     for _especie, pasta in pastas_especies(outdir).items():
         for contig, ini, end, strand, nome in _todos_os_loci(pasta):
             coords[nome] = {"contig": contig, "start": ini, "end": end, "strand": strand}
-    # Contig lengths: needed to draw the whole chromosome
+    # Contig lengths: needed to draw the whole chromosome. Only the contigs that carry a
+    # candidate: fragmented assemblies have millions of contigs, and sending all of them made
+    # the snapshot ~200 MB and the server take minutes to start.
+    necessarios = {v["contig"] for v in coords.values() if v.get("contig")}
     tamanhos = {}
     for _especie, pasta in pastas_especies(outdir).items():
-        info = _info_pipeline(pasta)
+        fai = (_info_pipeline(pasta).get("genome") or "") + ".fai"
+        if os.path.exists(fai):
+            with open(fai, encoding="utf-8", errors="replace") as fh:
+                for linha in fh:
+                    nome_contig, _, resto = linha.partition("\t")
+                    if nome_contig in necessarios and nome_contig not in tamanhos:
+                        try:
+                            tamanhos[nome_contig] = int(resto.split("\t", 1)[0])
+                        except ValueError:
+                            pass
+    # Without a .fai, the GC cache may still know the length (read once, it can be large)
+    if necessarios - set(tamanhos):
         cache = os.path.join(outdir, SUBPASTA, "cache_gc.json")
         if os.path.exists(cache):
             try:
                 with open(cache, encoding="utf-8") as fh:
                     for c, v in (json.load(fh).get("contigs") or {}).items():
-                        tamanhos.setdefault(c, v.get("tamanho", 0))
+                        if c in necessarios and c not in tamanhos:
+                            tamanhos[c] = v.get("tamanho", 0)
             except Exception:
                 pass
-        fai = (info.get("genome") or "") + ".fai"
-        if os.path.exists(fai):
-            with open(fai, encoding="utf-8", errors="replace") as fh:
-                for linha in fh:
-                    p_ = linha.split("\t")
-                    if len(p_) >= 2:
-                        tamanhos.setdefault(p_[0], int(p_[1]))
 
     # Genomic-context cluster of each candidate (bedtools merge of the anchored ORFs)
     ctx_cluster = {}
@@ -216,6 +259,7 @@ def listar_candidatas(outdir: str) -> dict:
 
     estado = _ler_selecao(outdir)
     removed = set(estado.get("removed", []))
+    qualificadas = set(estado.get("qualified", []))
     manuais = estado.get("proteins", {})
     manuais_fam = estado.get("families", {})
     itens = []
@@ -250,6 +294,8 @@ def listar_candidatas(outdir: str) -> dict:
                 "best_cellular": r.get("best_cellular", ""),
                 "cellular_title": r.get("cellular_title", ""),
                 "removed_flag": query in removed,
+                # inspected and kept by the researcher (an explicit decision, not the default)
+                "qualified": query in qualificadas and query not in removed,
                 "ctx_cluster": ctx_cluster.get((r.get("species", ""), r.get("orf", "")), ""),
                 **_campos_cdd(cdd_por_orf.get((r.get("species", ""), r.get("orf", ""))), tem_cdd),
                 **_campos_pfam(pfam_por_orf.get((r.get("species", ""), r.get("orf", ""))), tem_pfam),
@@ -266,6 +312,7 @@ def listar_candidatas(outdir: str) -> dict:
                 "hmm_best_score": _float(r.get("hmm_best_score")
                                            or hmm_por_orf.get(r.get("orf", ""), {}).get("best_score")),
                 "hmm_source": r.get("hmm_source", ""),
+                "hmm_model_genome": r.get("hmm_model_genome", ""),
                 # Target with genome type "unknown": formerly decided on a separate review
                 # page, now just flagged here and approved or rejected like any other row.
                 "review": revisao.get((r.get("species", ""), r.get("orf", ""))),
@@ -282,6 +329,8 @@ def listar_candidatas(outdir: str) -> dict:
     for i in itens:
         if not i["review"] and i["locus_representative"] and (i["species"], i["locus"]) in por_locus:
             i["review"] = por_locus[(i["species"], i["locus"])]
+
+    estado = _aplicar_veredito(outdir, itens, estado)
 
     aprovadas = [i for i in itens if not i["removed_flag"]]
     resumo = {
@@ -301,6 +350,8 @@ def listar_candidatas(outdir: str) -> dict:
         "per_protein_class": dict(Counter(i["protein_class"] for i in aprovadas
                                             if i["protein_class"] not in ("", "n/a")).most_common(20)),
         "per_cdd_scope": dict(Counter(i["cdd_scope"] for i in aprovadas if i["cdd_scope"])),
+        "per_verdict": dict(Counter(i["verdict"] for i in aprovadas)),
+        "per_detection": dict(Counter(i["detection"] for i in aprovadas)),
     }
     return {"outdir": os.path.abspath(outdir), "items": itens, "summary": resumo,
             "classes": classes_padrao(),
@@ -324,6 +375,11 @@ def listar_candidatas(outdir: str) -> dict:
             # tblastn of the viral references over the genome (tblastn_scan.py), per species
             "tblastn_scan": _varredura_salva(outdir),
             "tblastn_removed": estado.get("tblastn_removed", []),
+            # rejections that came from removing a tblastn segment or a context cluster
+            "removed_via": estado.get("removed_via", {}),
+            # host genes hit by the candidates (validation/host_genes.py) and those removed by hand
+            "host_genes": _genes_hospedeiro(outdir, itens),
+            "host_genes_removed": estado.get("host_genes_removed", []),
             # cross-species clusters with their tblastx pairs (multispecies_clustering.py)
             "cross_species": _comparacao_especies(outdir),
             # repeats and low complexity around the EVEs (repeats.py)
@@ -332,6 +388,80 @@ def listar_candidatas(outdir: str) -> dict:
                                 "genomes": {sp: {"ok": bool(g["genome"]), "segments": g["segments"]}
                                             for sp, g in genomas_para_sintenia(outdir).items()}},
             "stamp": estado_dados(outdir)}
+
+
+def _aplicar_veredito(outdir: str, itens: list, estado: dict) -> dict:
+    """
+    Verdict of every candidate (validation/verdict.py) and the automatic removal of the
+    explicitly non-viral ones. Each locus is removed by itself only once: `auto_seen` keeps
+    the queries already handled, so a locus the researcher restored stays restored.
+    """
+    from evetool.validation import verdict
+    te_por_locus, rep_por_locus = {}, {}
+    for r in (_repeticoes_salvas(outdir) or {}).get("loci", []):
+        especie, _, locus = r.get("locus", "").partition("|")
+        rep_por_locus[(especie, locus)] = r
+        if r.get("te_inside"):
+            te_por_locus[(especie, locus)] = r["te_inside"]
+    # homopolymers and simple repeats, straight from the candidate sequences
+    simples = {}
+    try:
+        from evetool.validation import low_complexity
+        multi = os.path.isdir(os.path.join(outdir, "especies"))
+        for especie, pasta in pastas_especies(outdir).items():
+            fasta = os.path.join(pasta, "04_candidatas_eves", "eve_candidatas_unificadas.fasta")
+            for orf, r in low_complexity.do_fasta(fasta).items():
+                simples[f"{especie}|{orf}" if (multi and especie) else orf] = r
+    except Exception as erro:
+        log(f"simple-sequence check unavailable: {erro}")
+    try:
+        from evetool.validation import read_evidence
+        reads = read_evidence.evidencia(outdir, itens)
+    except Exception as erro:                # the verdict must never fail because of the reads
+        log(f"read evidence unavailable: {erro}")
+        reads = {}
+    hospedeiro = {}
+    for g in (_genes_hospedeiro(outdir, itens) or {}).get("genes", []):
+        if g["proteome"] == "general database":
+            continue                         # already weighed as the cellular hit
+        for o in g["orfs"]:
+            if o["query"] not in hospedeiro or o["bitscore"] > hospedeiro[o["query"]]["bitscore"]:
+                hospedeiro[o["query"]] = dict(o, description=g["description"], organism=g["organism"],
+                                              uncharacterised=g["uncharacterised"])
+    candidatos = verdict.aplicar(itens, te_por_locus, reads, hospedeiro, simples, rep_por_locus)
+    vistos = set(estado.get("auto_seen", []))
+    novos = [q for q in candidatos if q not in vistos]
+    if novos:
+        por_query = {i["query"]: i for i in itens}
+        via = estado.setdefault("removed_via", {})
+        removidos = set(estado.get("removed", []))
+        for q in novos:
+            if q not in removidos:
+                removidos.add(q)
+                via[q] = verdict.AUTO_PREFIXO + por_query[q]["auto_reject"]
+                por_query[q]["removed_flag"] = True
+        estado["removed"] = sorted(removidos)
+        estado["auto_seen"] = sorted(vistos | set(novos))
+        try:
+            with open(caminho_selecao(outdir), "w", encoding="utf-8") as fh:
+                json.dump(estado, fh, ensure_ascii=False, indent=1)
+            log(f"{len(novos)} explicitly non-viral ORFs moved to the Removed box (automatic verdict)")
+        except OSError:
+            pass
+    return estado
+
+
+def _genes_hospedeiro(outdir: str, itens: list):
+    try:
+        from evetool.validation import host_genes
+        return host_genes.carregar(outdir, itens)
+    except Exception:
+        return None
+
+
+def rodar_genes_hospedeiro(outdir: str, proteomas=None, evalue: float = 1e-5, threads: int = 4) -> dict:
+    from evetool.validation import host_genes
+    return host_genes.rodar(outdir, proteomas or None, evalue, threads)
 
 
 def _varredura_salva(outdir: str) -> list:
@@ -477,8 +607,38 @@ def estado_dados(outdir: str) -> str:
         arquivos += tblastn_scan.arquivos(outdir)
     except Exception:
         pass
+    try:
+        from evetool.comparative import codon_composition
+        arquivos += codon_composition.arquivos(outdir)
+    except Exception:
+        pass
     marcas = [f"{os.path.getmtime(a):.3f}" for a in arquivos if os.path.exists(a)]
     return f"{len(marcas)}-{max(marcas, default='0')}"
+
+
+def loci_aprovados(outdir: str, species: str = None) -> list:
+    """
+    The approved EVE loci (overlapping ORFs of one insertion together), one entry per locus,
+    with the span of all its approved ORFs and its representative ORF: what the read heatmaps
+    of the page count over. `species` limits them to one genome.
+    """
+    loci = {}
+    for i in listar_candidatas(outdir)["items"]:
+        if i["removed_flag"] or not i["contig"] or not i["end"]:
+            continue
+        if species is not None and (i["species"] or "") != species:
+            continue
+        l = loci.setdefault((i["species"], i["locus"] or i["query"]), {"rep": i, "start": i["start"], "end": i["end"]})
+        l["start"], l["end"] = min(l["start"], i["start"]), max(l["end"], i["end"])
+        if i["locus_representative"] and not l["rep"]["locus_representative"]:
+            l["rep"] = i
+    saida = []
+    for (sp, locus), l in sorted(loci.items(), key=lambda kv: (kv[0][0] or "", kv[1]["rep"]["contig"], kv[1]["start"])):
+        r = l["rep"]
+        saida.append({"species": sp or "", "locus": locus, "query": r["query"], "orf": r["orf"], "contig": r["contig"],
+                      "start": l["start"], "end": l["end"], "strand": r["strand"], "family": r["family"],
+                      "protein_class": r["protein_class"], "verdict": r.get("verdict", "")})
+    return saida
 
 
 def gravar_snapshot(outdir: str) -> str:
@@ -489,6 +649,11 @@ def gravar_snapshot(outdir: str) -> str:
     import datetime
     dados = listar_candidatas(outdir)
     dados["saved_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+    try:   # circulating-virus composition (its own API when served; in the snapshot for offline use)
+        from evetool.comparative import codon_composition
+        dados["circulating"] = codon_composition.carregar(outdir)
+    except Exception as erro:
+        log(f"circulating-virus analysis not added to the snapshot: {erro}")
     destino_dir = os.path.join(outdir, "12_dashboard_web", "dados")
     os.makedirs(destino_dir, exist_ok=True)
     destino = os.path.join(destino_dir, "snapshot.js")
@@ -519,16 +684,25 @@ def exportar_html_autonomo(outdir: str, corpo_json: str = None) -> str:
         import datetime
         dados = listar_candidatas(outdir)
         dados["saved_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+        try:
+            from evetool.comparative import codon_composition
+            dados["circulating"] = codon_composition.carregar(outdir)
+        except Exception:
+            pass
         corpo_json = json.dumps(dados, ensure_ascii=False).replace("</", "<\\/")
-    # A replacement function, so backslashes in the data are never read as regex escapes
-    html = re.sub(r'<script src="dados/snapshot\.js"></script>',
-                  lambda _m: "<script>window.EVE_SNAPSHOT = " + corpo_json + ";</script>", html, count=1)
+    # The page loads dados/snapshot.js and Plotly between two markers; here both go inline.
+    # A replacement function, so backslashes in the data are never read as regex escapes.
     plotly = os.path.join(base, "assets", "plotly-2.24.1.min.js")
+    js = ""
     if os.path.exists(plotly):
         with open(plotly, encoding="utf-8") as fh:
             js = fh.read().replace("</script", "<\\/script")
-        html = re.sub(r'<script src="assets/plotly-[^"]+"></script>',
-                      lambda _m: "<script>" + js + "</script>", html, count=1)
+    inline = ("<script>window.EVE_SNAPSHOT = " + corpo_json + ";</script>"
+              + ("<script>" + js + "</script>" if js else
+                 '<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.24.1/plotly.min.js"></script>'))
+    html, n = re.subn(r"<!--EVE_LOADER-->.*?<!--/EVE_LOADER-->", lambda _m: inline, html, count=1, flags=re.S)
+    if not n:
+        raise RuntimeError("curation.html has no EVE_LOADER block: the offline page cannot be built")
     destino = os.path.join(outdir, "12_dashboard_web", NOME_AUTONOMO)
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     with open(destino + ".tmp", "w", encoding="utf-8") as fh:
@@ -1426,6 +1600,37 @@ def _anotacao_orfs(outdir: str, species: str, nomes: set) -> dict:
     return saida
 
 
+def _bordas_do_contig(outdir: str, species: str, contig: str, start: int, end: int, tam_contig: int) -> dict:
+    """
+    The ends of the contig that carries the EVE, as page coordinates: `left` / `right` are where
+    the contig begins and ends on the axis the drawings use, `dist_left` / `dist_right` the
+    sequence left on each side of the EVE. A run made on extracted segments is placed back on
+    the whole genome first (the end of a segment is not the end of a contig); when that genome
+    is not known the ends are unknown (`known` False) and nothing is marked.
+    """
+    saida = {"known": bool(tam_contig), "segment": False, "contig": contig, "length": tam_contig,
+             "left": 0, "right": tam_contig, "dist_left": start, "dist_right": max(0, tam_contig - end)}
+    try:
+        g = genomas_para_sintenia(outdir).get(species) or {}
+        if g.get("segments"):
+            saida.update({"known": False, "segment": True})
+            if g.get("genome"):
+                from evetool.annotation.dna_reads import _tamanhos
+                from evetool.annotation.rnaseq_tracks import _origem
+                from evetool.comparative.flank_synteny import mapear_para_genoma
+                c2, a2, b2, invertido = mapear_para_genoma(contig, start, end, _origem(outdir, species))
+                tam = _tamanhos(g["genome"]).get(c2, 0)
+                if c2 != contig and tam:
+                    antes, depois = (tam - b2, a2) if invertido else (a2, tam - b2)
+                    saida.update({"known": True, "contig": c2, "length": tam, "flipped": invertido,
+                                  "genome_start": a2 + 1, "genome_end": b2,
+                                  "left": start - antes, "right": end + depois,
+                                  "dist_left": max(0, antes), "dist_right": max(0, depois)})
+    except Exception as erro:
+        saida["error"] = str(erro)
+    return saida
+
+
 def detalhar_eve(outdir: str, query: str, janela_vizinhos: int = 25000,
                  limite_contig_pequeno: int = 200000, extensao_perfil: int = 50000,
                  janela_gc: int = 2500, passo_gc: int = 500) -> dict:
@@ -1532,6 +1737,9 @@ def detalhar_eve(outdir: str, query: str, janela_vizinhos: int = 25000,
         "query_sequence": seq_nt or "", "query_length": len(seq_nt) if seq_nt else 0,
     })
 
+    # 2b. Where the real contig ends, in the coordinates of this page (so every drawing can mark it)
+    resultado["contig_edges"] = _bordas_do_contig(outdir, species, contig, start, end, tam_contig)
+
     # 3. Neighbouring EVEs on the same contig
     vizinhos = []
     for c, i, f, s, nome in _todos_os_loci(pasta):
@@ -1541,7 +1749,7 @@ def detalhar_eve(outdir: str, query: str, janela_vizinhos: int = 25000,
         if dist <= janela_vizinhos:
             vizinhos.append({"orf": nome, "start": i, "end": f, "strand": s, "distance": dist})
     vizinhos.sort(key=lambda v: v["distance"])
-    resultado["neighbours"] = vizinhos[:12]
+    resultado["neighbours"] = vizinhos[:60]
     resultado["n_neighbours"] = len(vizinhos)
 
     # 4. The cluster it belongs to, when the clustering has already run

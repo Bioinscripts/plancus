@@ -16,9 +16,9 @@ dependencies:
   - bedtools>=2.31
   - samtools>=1.19
   - ncbi-datasets-cli>=16.0
-  # RNA-seq coverage (only with --rnaseq-*)
-  - hisat2
+  # Read mapping: long / other RNA with minimap2 (as ViralQuest), small RNA with Bowtie1 (as sRNAProfiler)
   - minimap2
+  - bowtie>=1.3
 
   # --- Python libraries ---
   - biopython>=1.83
@@ -31,3 +31,5 @@ dependencies:
   - requests>=2.31
   - pyhmmer>=0.11
   - pysam>=0.22
+  - primer3-py>=2.0        # primer suggestions on the curation page
+  - scikit-learn>=1.3      # t-SNE in the circulating-virus composition tab

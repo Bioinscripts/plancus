@@ -1,0 +1,144 @@
+  <section class="view" data-tab="sequences">
+    <div class="sv-head"><h2>Sequence viewer<span class="count" id="sv-n"></span></h2>
+      <span style="flex:1"></span>
+      <button class="mini" id="sv-expand" title="Open every card shown below (the details are read from the server a few at a time)">Expand all</button>
+      <button class="mini" id="sv-collapse">Collapse all</button>
+      <button class="mini" id="sv-selall" title="Select every EVE that matches the filters">Select all</button>
+      <button class="mini" id="sv-desel">Deselect</button>
+      <span class="menu"><button class="mini primary" id="sv-export" disabled>Export selected ▾</button>
+        <span class="menu-panel" id="sv-export-menu" hidden>
+          <button data-x="fasta">Download FASTA (genome strand)</button>
+          <button data-x="fasta500">Download FASTA ± 500 bp</button>
+          <button data-x="copy">Copy FASTA</button>
+          <button data-x="tsv">Table with the read evidence (TSV)</button>
+          <button data-x="gff" title="Every ORF of the selected EVEs, under one viral_sequence per locus; an ORF lying entirely inside another selected ORF (any frame or strand) is left out">GFF3 of their ORFs, nested left out</button>
+        </span></span>
+    </div>
+    <div class="sv-tools">
+      <input type="search" id="sv-q" placeholder="Search ORF, species, family, protein, contig, cluster…">
+      <select id="sv-sort" title="Order of the cards">
+        <option value="bits">Viral bits: high → low</option>
+        <option value="pos">Genome position</option>
+        <option value="family">Viral family</option>
+        <option value="length">Length: long → short</option>
+        <option value="dna">DNA: present in most libraries</option>
+        <option value="rna">RNA-seq: most transcribed</option>
+        <option value="srna">Small RNA: most reads</option>
+      </select>
+      <select id="sv-sp"><option value="">All species</option></select>
+      <select id="sv-fam"><option value="">All families</option></select>
+      <select id="sv-state" title="Curation state of the locus">
+        <option value="approved">Approved (not rejected)</option>
+        <option value="undecided">Not decided yet</option>
+        <option value="qualified">Qualified</option>
+        <option value="removed">Rejected</option>
+        <option value="all">Every candidate</option>
+      </select>
+      <select id="sv-reads" title="Keep only the loci with this read evidence (libraries mapped in the Libraries tab)">
+        <option value="">Any read evidence</option>
+        <option value="dna">Present in a DNA library</option>
+        <option value="rna">Transcribed (RNA-seq)</option>
+        <option value="srna">Small RNA reads</option>
+        <option value="pp">piRNA ping-pong</option>
+      </select>
+    </div>
+    <details class="how-box"><summary>How to read a card</summary><p>One card per EVE locus (the overlapping ORFs of one
+      insertion together, shown through their representative ORF). The header carries the viral family and protein, the
+      length, the verdict and the read evidence of every library mapped on the page: <b>DNA</b> = libraries where the
+      insertion is present / libraries with data; <b>RNA</b> = RNA-seq libraries with ≥ 5 reads inside the locus;
+      <b>sRNA</b> = small RNA reads and the strongest piRNA signature (● ping-pong, ▲ primary 5′U, ▼ A10 only).
+      Opening a card reads the locus from the server: verdict, the genomic context with every read track, the domain
+      architecture, the reads library by library, the tblastn segments and the clusters it belongs to, and its
+      sequence. Curating (qualify / reject, family, protein) stays in <b>Inspection</b>: the button at the end of each
+      card opens it.</p></details>
+    <div id="sv-list"></div>
+    <div style="text-align:center;margin:14px 0"><button class="mini" id="sv-more" hidden>show more</button></div>
+  </section>
+  <section class="view" data-tab="libraries">
+    <div class="sv-head"><h2>Reads over the EVEs<span class="count" id="lb-n"></span></h2>
+      <span style="flex:1"></span>
+      <label class="lb-l">species <select id="lb-sp"></select></label>
+      <label class="lb-l">rows <select id="lb-sort">
+        <option value="pos">genome position</option><option value="family">viral family</option>
+        <option value="dna">DNA presence</option><option value="rna">transcription</option><option value="srna">small RNA</option></select></label>
+      <button class="mini" id="lb-reload" title="Read the libraries and the reads again">reload reads</button>
+    </div>
+    <div class="tiles" id="lb-tiles"></div>
+
+    <div class="grp">Genomic DNA <span>is the insertion in the genome of each library: fixed, polymorphic or absent</span></div>
+    <div class="card">
+      <div class="bar" style="margin-bottom:6px"><h2 style="margin:0">Presence in the DNA libraries</h2>
+        <span style="flex:1"></span>
+        <button class="mini" id="lb-dna-tsv">TSV</button>
+        <button class="mini exportar" data-target="lb-dna" data-name="eve_dna_presence">PDF</button>
+        <button class="mini exportar" data-target="lb-dna" data-name="eve_dna_presence" data-fmt="svg">SVG</button>
+      </div>
+      <details class="how-box"><summary>How it works · what it means</summary><p>Each row is an approved EVE locus, each column a
+        DNA library (the assembly reads first, then the individuals and pools by population). The call is the one of the
+        <b>Genomic DNA</b> tab, with its thresholds: <b>present</b> = the EVE is covered and its depth matches the flanks;
+        <b>het</b> = present, with reads of a chromosome without the insertion as well (reads clipped at the junction);
+        <b>partial</b> = only part of the EVE covered or its depth well below the flanks; <b>absent</b> = no read on the
+        EVE while the flanks are covered; <b>excess</b> = much deeper than the flanks or the genome (a repeat, or a copy
+        elsewhere landing here); <b>no data</b> = the flanks have too few reads to say. A fixed insertion is present in
+        every individual; a polymorphic one in some. Libraries mapped elsewhere (a cluster) enter with their
+        measurements only. Hover a cell for its numbers; click a row to open its card.</p></details>
+      <div class="hm-box" id="lb-dna"></div>
+    </div>
+
+    <div class="grp">RNA-seq <span>transcription of each EVE, library by library</span></div>
+    <div class="card">
+      <div class="bar" style="margin-bottom:6px"><h2 style="margin:0">Transcription in the RNA-seq libraries</h2>
+        <span style="flex:1"></span>
+        <label class="lb-l">value <select id="lb-rna-v">
+          <option value="mean_depth">mean depth over the EVE</option><option value="reads">reads inside the EVE</option>
+          <option value="breadth">share of the EVE covered</option></select></label>
+        <button class="mini" id="lb-rna-tsv">TSV</button>
+        <button class="mini exportar" data-target="lb-rna" data-name="eve_rnaseq_heatmap">PDF</button>
+        <button class="mini exportar" data-target="lb-rna" data-name="eve_rnaseq_heatmap" data-fmt="svg">SVG</button>
+      </div>
+      <details class="how-box"><summary>How it works · what it means</summary><p>Reads of every RNA-seq BAM of the species
+        (short reads, long reads, Iso-Seq) counted over each approved locus: <b>reads inside the EVE</b> have aligned bases
+        in it (a read whose splice gap only jumps over the EVE is not counted), <b>mean depth</b> is averaged over the
+        locus, <b>share covered</b> is the fraction with at least one read. The colour is on a log scale, one hue,
+        darker = more; empty = no read. For a stranded library the hover gives the depth on each genome strand. A
+        transcribed EVE is not proof of a functional gene: read-through from a host gene or a nearby transposon
+        transcribes it as well — the card shows whether the reads continue into the flanks.</p></details>
+      <div class="hm-box" id="lb-rna"></div>
+    </div>
+
+    <div class="grp">Small RNA <span>siRNA and piRNA over each EVE: primary (5′ U), secondary (A10) and the ping-pong cycle</span></div>
+    <div class="card">
+      <div class="bar" style="margin-bottom:6px"><h2 style="margin:0">Small RNA reads</h2>
+        <span style="flex:1"></span>
+        <label class="lb-l">value <select id="lb-srna-v">
+          <option value="reads_rpm">reads per million (RPM)</option><option value="reads">reads (1/NH weighted)</option>
+          <option value="pirna">piRNA-sized reads (24–31 nt)</option></select></label>
+        <button class="mini" id="lb-srna-tsv">TSV</button>
+        <button class="mini exportar" data-target="lb-srna" data-name="eve_srna_heatmap">PDF</button>
+        <button class="mini exportar" data-target="lb-srna" data-name="eve_srna_heatmap" data-fmt="svg">SVG</button>
+      </div>
+      <div class="lb-th">piRNA calls:
+        <label>at least <input type="number" id="lb-pi-min" value="20" min="1" step="1"> piRNA-sized reads</label>
+        <label>primary: 5′ U ≥ <input type="number" id="lb-pi-u1" value="0.5" min="0" max="1" step="0.05"></label>
+        <label>secondary: A10 ≥ <input type="number" id="lb-pi-a10" value="0.4" min="0" max="1" step="0.05"></label>
+        <label>ping-pong z ≥ <input type="number" id="lb-pi-z" value="2" min="0" step="0.5"></label>
+      </div>
+      <details class="how-box"><summary>How it works · what it means</summary><p>Small RNA reads mapped with the sRNAProfiler
+        method (Bowtie1, at most one mismatch); a read placed at N sites counts 1/N at each, and a read belongs to an EVE
+        when at least half of it falls inside. The cell colour is the abundance (log scale); the glyph is the piRNA
+        signature of the <b>piRNA-sized reads (24–31 nt)</b>, read strand by strand:
+        <b>▲ primary</b> — one strand carries a 5′ uridine bias (5′ U at or above the threshold), the mark of primary
+        piRNAs cut from long precursor transcripts (piRNA clusters); EVE-derived primary piRNAs are usually
+        <i>antisense</i> to the viral ORF. <b>▼ secondary</b> — an adenine at position 10 (A10) on a strand, the mark of
+        secondary piRNAs, without a significant ping-pong overlap. <b>● ping-pong</b> — the 5′ ends of piRNAs on opposite
+        strands overlap by exactly 10 nt more often than by any other distance (z-score of the 10-nt overlap against
+        1–20 nt, sRNAProfiler); with a 5′ U strand and an A10 strand facing each other this is the ping-pong
+        amplification cycle: the primary piRNA guides the cleavage of a complementary transcript, whose fragment becomes
+        the secondary piRNA. <b>◆ siRNA</b> — sRNAProfiler calls the locus siRNA (20–22 nt, both strands, no
+        ping-pong). The thresholds above change the calls at once; the table under the heatmap lists every locus with
+        enough piRNA-sized reads, strand by strand (sense / antisense = relative to the EVE's ORF).</p></details>
+      <div class="hm-box" id="lb-srna"></div>
+      <h4 style="margin:18px 0 6px">piRNA signatures</h4>
+      <div class="table-scroll" style="max-height:520px"><div id="lb-pi"></div></div>
+    </div>
+  </section>

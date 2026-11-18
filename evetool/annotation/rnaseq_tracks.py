@@ -5,7 +5,8 @@ clusters and tblastn segments).
 The BAMs of a species come from:
   * <species folder>/10_rnaseq_expressao/samples.json, written by the coverage step;
   * otherwise the BAMs left in 10_rnaseq_expressao/bam/ and bam_index/ by older runs;
-  * BAMs added on the page, kept in 13_curadoria/rnaseq_bams.json.
+  * BAMs added on the page, or mapped from reads there (`mapear`, minimap2 as ViralQuest),
+    kept in 13_curadoria/rnaseq_bams.json.
 
 A BAM may be aligned to the whole genome or to the pipeline's context windows (see
 rnaseq_coverage.BamReference). In runs on extracted segments the region is first placed on the
@@ -120,6 +121,63 @@ def adicionar(outdir: str, species: str, bam: str, library: str = "unknown") -> 
     return {"species": species, "name": nome, "samples": resumo_amostras(outdir)}
 
 
+TIPOS_LEITURA = {"sr": "Illumina short reads", "ont": "Oxford Nanopore", "pb": "PacBio CLR", "hifi": "PacBio HiFi"}
+
+
+def mapear(outdir: str, species: str, r1: str, r2: str = "", read_type: str = "sr", library: str = "unknown",
+           reference: str = "genome", flank: int = 20000, nome: str = "", threads: int = 4, passo=None) -> dict:
+    """
+    Map long-RNA (or any other RNA) reads of one species and add the BAM to its tracks, as
+    ViralQuest maps its reads: `minimap2 -ax <preset> | samtools sort`, preset by read technology.
+    `reference` = "genome" (the whole genome: no read is forced onto an EVE) or "windows" (the
+    EVE loci +/- `flank`, much faster, but reads of similar sequences elsewhere land here too).
+    """
+    from evetool.annotation.rnaseq_coverage import (Sample, align_reads, build_windows, contig_sizes_for,
+                                                    load_loci, sample_name, write_window_fasta, MM2_PRESET)
+    from evetool.curation.curation import genomas_para_sintenia
+    passo = passo or (lambda t: print(f"[RNAseq] {t}", flush=True))
+    pastas = _pastas(outdir)
+    if species not in pastas:
+        raise RuntimeError(f"unknown species: {species or '(single genome)'}")
+    if read_type not in MM2_PRESET:
+        raise RuntimeError(f"unknown read type: {read_type}")
+    if library not in ("fr", "rf", "unstranded", "unknown"):
+        raise RuntimeError(f"unknown library type: {library}")
+    arquivos = [os.path.abspath(os.path.expanduser(x.strip())) for x in (r1, r2) if x and x.strip()]
+    if not arquivos:
+        raise RuntimeError("give the path of the reads (FASTQ)")
+    for a in arquivos:
+        if not os.path.exists(a):
+            raise RuntimeError(f"file not found: {a}")
+    if len(arquivos) == 2 and read_type != "sr":
+        raise RuntimeError("paired files are for short reads only")
+    g = genomas_para_sintenia(outdir).get(species) or {}
+    destino = os.path.join(outdir, SUBPASTA, "rnaseq_map", species or "genome")
+    os.makedirs(destino, exist_ok=True)
+    nome = nome or sample_name(arquivos[0])
+    if reference == "windows":
+        genoma = g.get("own")
+        if not genoma or not os.path.exists(genoma):
+            raise RuntimeError(f"genome of '{species or 'this run'}' not found")
+        loci = load_loci(pastas[species], species or None)
+        if not loci:
+            raise RuntimeError("no EVE locus to build the windows from")
+        janelas = build_windows(loci, int(flank), contig_sizes_for(genoma, pastas[species]))
+        passo(f"writing {len(janelas)} EVE window(s) (± {int(flank):,} bp)")
+        ref = write_window_fasta(genoma, janelas, os.path.join(destino, f"eve_windows_flank{int(flank)}.fasta"))
+        nome += f".windows{int(flank)}"
+    else:
+        ref = g.get("genome")
+        if not ref or not os.path.exists(ref):
+            raise RuntimeError(f"genome of '{species or 'this run'}' not found")
+    passo(f"minimap2 -ax {MM2_PRESET[read_type]} on {'the EVE windows' if reference == 'windows' else 'the whole genome'}")
+    bam = align_reads(Sample(nome, r1=arquivos[0], r2=arquivos[1] if len(arquivos) > 1 else None),
+                      ref, destino, threads, read_type, force=True)
+    passo("adding the BAM to the tracks")
+    r = adicionar(outdir, species, bam, library)
+    return {**r, "bam": bam, "read_type": read_type, "reference": reference}
+
+
 def remover(outdir: str, species: str, nome: str) -> dict:
     """Forget a BAM added on the page (the file itself is not touched)."""
     dados = _ler_adicionados(outdir)
@@ -152,6 +210,23 @@ def _origem(outdir: str, species: str) -> dict:
         _origens[chave] = calibrar_origens(origens_de_segmentos(g["own"]), g["own"], g["genome"]) \
             if g.get("segments") and g.get("own") and g.get("genome") else {}
     return _origens[chave]
+
+
+def _baixa_cobertura(arr: np.ndarray, media: float, desloc: int, fracao: float = 0.20) -> list:
+    """
+    Internal runs where depth falls below 20% of the mean, as ViralQuest flags them: runs that
+    touch either end or are shorter than max(20 nt, 1% of the region) are left out.
+    [[start, end], ...], 0-based half-open, in the coordinates asked for.
+    """
+    if media <= 0:
+        return []
+    abaixo = arr < media * fracao
+    if not abaixo.any():
+        return []
+    minimo = max(20, int(arr.size * 0.01))
+    bordas = np.flatnonzero(np.diff(np.concatenate(([0], abaixo.view(np.int8), [0])))).reshape(-1, 2)
+    return [[int(a) + desloc, int(b) + desloc] for a, b in bordas
+            if a != 0 and b != arr.size and b - a >= minimo][:50]
 
 
 def _binar(arr: np.ndarray, ini: np.ndarray, fn) -> list:
@@ -212,7 +287,19 @@ def cobertura(outdir: str, species: str, contig: str, start: int, end: int, bins
             prof_d, in_ref = prof_d[::-1], in_ref[::-1]
             mais, menos = menos[::-1], mais[::-1]
         tam = np.diff(np.append(ini, len(prof_d)))
+        # ViralQuest's track: bar height = depth, bar colour = mean base quality of the bin (over the
+        # covered positions only), plus the uniformity figures of its caption
+        qsum = prof.qsum[::-1] if invertido else prof.qsum
+        soma_d = np.add.reduceat(prof_d, ini)
+        qual = np.divide(np.add.reduceat(qsum, ini), soma_d, out=np.zeros_like(soma_d), where=soma_d > 0)
+        media = float(prof_d.mean())
         item.update({
+            "quality": [round(float(x), 1) for x in qual],
+            "mean_quality": round(float(qsum.sum() / prof_d.sum()), 1) if prof_d.sum() > 0 else 0.0,
+            "breadth_1x": round(float((prof_d >= 1).mean()), 4),
+            "cv": round(float(prof_d.std() / media), 3) if media > 0 else 0.0,
+            "mean_plus": round(float(mais.mean()), 2), "mean_minus": round(float(menos.mean()), 2),
+            "low_cov": _baixa_cobertura(prof_d, media, start),
             "mean": [round(x, 2) for x in (np.add.reduceat(prof_d, ini) / tam).tolist()],
             "max": _binar(prof_d, ini, np.maximum),
             "plus": [round(x, 2) for x in (np.add.reduceat(mais, ini) / tam).tolist()],
@@ -232,6 +319,49 @@ def cobertura(outdir: str, species: str, contig: str, start: int, end: int, bins
         _cache[chave] = resposta
         while len(_cache) > 64:
             _cache.popitem(last=False)
+    return resposta
+
+
+_cache_matriz = OrderedDict()   # (outdir, species, data stamp, BAMs) -> answer (last 8)
+
+
+def matriz(outdir: str, species: str) -> dict:
+    """
+    Transcription of every approved EVE locus of `species` in every RNA-seq sample, for the
+    heatmap of the page: reads with aligned bases inside the locus (exonic), reads whose splice
+    gap only spans it, mean depth, the share of the locus covered and the mean depth per strand.
+    Cached until the curation, the data on disk or the list of BAMs changes.
+    """
+    from evetool.curation.curation import estado_dados, loci_aprovados
+    lista = amostras(outdir).get(species, [])
+    marca = tuple((a["name"], a["bam"], os.path.getmtime(a["bam"]) if os.path.exists(a["bam"]) else 0) for a in lista)
+    chave = (outdir, species, estado_dados(outdir), marca)
+    if chave in _cache_matriz:
+        return _cache_matriz[chave]
+    resposta = {"species": species, "loci": [],
+                "samples": [{"name": a["name"], "library": a.get("library") or "unknown"} for a in lista]}
+    if not lista:
+        resposta["note"] = "no RNA-seq BAM for this species"
+        return resposta
+    for l in loci_aprovados(outdir, species):
+        celulas = {}
+        try:
+            r = cobertura(outdir, species, l["contig"], l["start"], l["end"], 10, [[l["start"], l["end"]]])
+            for s in r["samples"]:
+                if s.get("error"):
+                    celulas[s["name"]] = {"error": s["error"]}
+                    continue
+                f = (s.get("focus") or [{}])[0]
+                celulas[s["name"]] = {"reads": f.get("exonic", 0), "spanning": f.get("spanning", 0),
+                                      "mean_depth": f.get("mean_depth", 0), "breadth": s.get("breadth_1x"),
+                                      "mean_plus": s.get("mean_plus"), "mean_minus": s.get("mean_minus")}
+        except Exception as erro:
+            l = {**l, "error": str(erro)}
+        resposta["loci"].append({**l, "cells": celulas})
+    with _trava:
+        _cache_matriz[chave] = resposta
+        while len(_cache_matriz) > 8:
+            _cache_matriz.popitem(last=False)
     return resposta
 
 

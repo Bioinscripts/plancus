@@ -1,0 +1,123 @@
+
+  /* ===== curation_v2 — report layout, after the ViralQuest report: a fixed navigation bar, light
+     surfaces, rounded cards with soft shadows, pill buttons, uppercase section labels and one
+     collapsible card per EVE. Every colour still comes from the tokens above. ===== */
+  :root{
+    --nav-h:58px; --nav:#16323f; --nav-ink:rgba(255,255,255,.72); --radius:16px;
+    --shadow:0 4px 16px rgba(15,49,75,.08),0 2px 4px rgba(15,49,75,.04);
+    --shadow-sm:0 1px 2px rgba(15,49,75,.05),0 2px 6px rgba(15,49,75,.04);
+    --bg:#f3f6fa; --surface:#ffffff; --surface-2:#f6f8fb; --border:#e2e8f0; --grid:#edf1f6;
+    --text:#1e293b; --text-2:#475569; --muted:#8a99ad;
+  }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --nav:#0d1b22; --shadow:0 4px 16px rgba(0,0,0,.35); --shadow-sm:0 1px 3px rgba(0,0,0,.35) } }
+  :root[data-theme="dark"]{ --nav:#0d1b22; --shadow:0 4px 16px rgba(0,0,0,.35); --shadow-sm:0 1px 3px rgba(0,0,0,.35) }
+  body{font-family:Inter,"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;padding-top:var(--nav-h)}
+  /* navigation bar: logo, tabs, connection and the global buttons */
+  header.top{position:fixed;top:0;left:0;right:0;height:var(--nav-h);z-index:900;margin:0;padding:0 24px;
+    background:var(--nav);display:flex;align-items:center;gap:16px;flex-wrap:nowrap;
+    box-shadow:0 1px 0 rgba(255,255,255,.06),0 2px 12px rgba(0,0,0,.25)}
+  header.top .logo{height:40px;border:0;border-radius:10px;flex-shrink:0}
+  header.top .brand{flex-shrink:0} header.top .brand h1{color:#fff;font-size:17px}
+  header.top .brand .tagline{color:rgba(255,255,255,.5);font-size:9.5px}
+  header.top .tabs{display:flex;align-self:stretch;margin:0;padding:0;border:0;border-radius:0;background:transparent;
+    gap:0;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+  header.top .tabs::-webkit-scrollbar{display:none}
+  header.top .tabs.mais{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);
+    mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}
+  header.top .tabs button{border:0;border-radius:0;padding:0 10px;height:100%;color:var(--nav-ink);font-size:13.5px;
+    border-bottom:3px solid transparent;background:transparent;box-shadow:none;white-space:nowrap}
+  header.top .tabs button:hover{color:#fff;border-color:transparent}
+  header.top .tabs button[aria-selected="true"]{color:#fff;font-weight:650;border-bottom-color:var(--brand-2);
+    background:rgba(255,255,255,.05);box-shadow:none}
+  header.top .tab-n{color:rgba(255,255,255,.5)}
+  header.top .conn{color:rgba(255,255,255,.8);border-color:rgba(255,255,255,.28);flex-shrink:0}
+  header.top .conn.live{color:#8fe0b4;border-color:#8fe0b4} header.top .conn.offline{color:#f3cf7a;border-color:#f3cf7a}
+  header.top button.mini{background:transparent;color:#fff;border-color:rgba(255,255,255,.28);flex-shrink:0}
+  header.top button.mini:hover:not([disabled]){border-color:#fff}
+  header.top a.classic{color:rgba(255,255,255,.7);font-size:12.5px;text-decoration:none;white-space:nowrap;flex-shrink:0}
+  header.top a.classic:hover{color:#fff}
+  @media (max-width:1600px){ header.top .brand{display:none} }
+  /* surfaces */
+  .card{border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:20px 22px;margin-bottom:16px}
+  h2{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  button{border-radius:999px} button.mini{border-radius:999px;padding:4px 12px}
+  button.primary{box-shadow:var(--shadow-sm)}
+  select,input[type=text],input[type=number]{border-radius:10px}
+  input[type=search]{border-radius:999px;padding:8px 16px}
+  .tiles{gap:14px}
+  .tile{border-radius:14px;border-left:4px solid var(--accent);box-shadow:var(--shadow-sm);padding:14px 16px}
+  .tile:nth-child(4n+2){border-left-color:var(--s3)} .tile:nth-child(4n+3){border-left-color:var(--s4)}
+  .tile:nth-child(4n+4){border-left-color:var(--s2)}
+  .how-box{border-radius:12px} .table-scroll{border-radius:12px} .panel{border-radius:0}
+  .grp{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:26px 2px 10px;font-size:12px;font-weight:750;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--text)}
+  .grp span{font-weight:400;letter-spacing:0;text-transform:none;color:var(--muted);font-size:12.5px}
+  body[data-tab="sequences"] .view[data-tab="sequences"], body[data-tab="libraries"] .view[data-tab="libraries"]{display:block}
+  /* sequence viewer: one collapsible card per EVE locus */
+  .sv-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 14px}
+  .sv-head h2{margin:0;font-size:21px} .sv-head .count{font-size:14px;color:var(--muted);font-weight:400;margin-left:8px}
+  .sv-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .sv-tools input[type=search]{flex:1 1 280px;max-width:440px}
+  .lb-l{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-2)}
+  .seq-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm);
+    margin-bottom:10px;overflow:hidden}
+  .seq-card.open{box-shadow:var(--shadow)} .seq-card.rejected .seq-id{text-decoration:line-through;opacity:.6}
+  .seq-head{display:flex;align-items:center;gap:14px;padding:12px 18px;cursor:pointer}
+  .seq-info{display:flex;align-items:center;gap:6px 14px;flex-wrap:wrap;flex:1;min-width:0}
+  .seq-id{overflow-wrap:anywhere}
+  .nav-menu .menu-panel{top:calc(100% + 10px)} .nav-menu .menu-panel button, .nav-menu .menu-panel a{color:var(--text)}
+  .menu-panel a.menu-link{display:block;padding:7px 10px;font-size:13px;border-radius:8px;text-decoration:none}
+  .menu-panel a.menu-link:hover{background:var(--surface-2)}
+  header.top #b-more{font-size:16px;line-height:1;padding:3px 12px 6px}
+  .seq-head:hover{background:var(--surface-2)}
+  .seq-card.open .seq-head{background:var(--surface-2);border-bottom:1px solid var(--border)}
+  .seq-head input[type=checkbox]{width:16px;height:16px;margin:0}
+  .seq-id{font:650 13.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--text)}
+  .seq-sp{font-style:italic;font-size:13px;color:var(--text-2)}
+  .seq-meta{font-size:12.5px;color:var(--text);white-space:nowrap} .seq-meta b{font-weight:400;color:var(--muted);margin-right:4px}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border:1px solid var(--border);border-radius:999px;
+    font-size:12px;background:var(--surface);white-space:nowrap;color:var(--text)}
+  .chip .k{font-size:9.5px;font-weight:750;letter-spacing:.07em;color:var(--muted)}
+  .chip .meter{width:42px;height:5px;border-radius:3px;background:var(--surface-2);overflow:hidden;display:inline-block}
+  .chip .meter i{display:block;height:100%;border-radius:3px}
+  .chip.dim{color:var(--muted)}
+  .seq-tail{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .seq-chev{display:inline-block;color:var(--muted);transition:transform .18s;font-size:13px}
+  .seq-card.open .seq-chev{transform:rotate(90deg)}
+  .seq-body{padding:6px 20px 20px}
+  .sec-label{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:750;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--text-2);margin:20px 0 8px}
+  .sec-label .q{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--border);
+    font-size:10px;color:var(--muted);cursor:help;letter-spacing:0;font-weight:600}
+  .sec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px}
+  .pbox{border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--surface-2);min-width:0}
+  .pbox h5{margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--text);text-transform:uppercase}
+  .pbox .desc{font-size:12px}
+  .met-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+  .met-row .met{background:var(--surface-2);border:1px solid var(--border);border-radius:10px}
+  .menu{position:relative;display:inline-block}
+  .menu-panel{position:absolute;right:0;top:calc(100% + 6px);min-width:220px;background:var(--surface);border:1px solid var(--border);
+    border-radius:12px;box-shadow:var(--shadow);padding:6px;z-index:60}
+  .menu-panel button{display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:7px 10px;font-size:13px;background:transparent}
+  .menu-panel button:hover{background:var(--surface-2)}
+  .libsq{display:inline-block;width:11px;height:11px;border-radius:3px;margin:1px;vertical-align:middle}
+  .lib-row{display:grid;grid-template-columns:minmax(90px,170px) 1fr auto;gap:8px;align-items:center;font-size:12.5px;padding:3px 0;
+    border-bottom:1px dashed var(--border)}
+  .lib-row:last-child{border-bottom:0}
+  .lib-row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .barra{height:8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);overflow:hidden}
+  .barra i{display:block;height:100%;border-radius:4px}
+  .pi-tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid var(--border);white-space:nowrap}
+  .pi-tag.pp{background:var(--s7);border-color:var(--s7);color:#fff} .pi-tag.prim{border-color:var(--s7);color:var(--s7)}
+  .pi-tag.sec{border-color:var(--s2);color:var(--s2)} .pi-tag.size,.pi-tag.few,.pi-tag.none{color:var(--muted)}
+  .pi-tag.si{border-color:var(--s1);color:var(--s1)}
+  .seq-fasta{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;
+    max-height:220px;overflow:auto;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:0}
+  /* heatmaps */
+  .hm-box{overflow-x:auto} .hm-box svg text.rot{font:10.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;fill:var(--text)}
+  .hm-box svg g.hm-row:hover rect.hm-bg{fill:var(--surface-2)}
+  .hm-box svg g.hm-row{cursor:pointer}
+  .grad{display:inline-block;width:120px;height:10px;border-radius:3px;vertical-align:middle;border:1px solid var(--border)}
+  .lb-th{display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--text-2);margin:6px 0 10px}
+  .lb-th input{width:62px}
+  table.pi-tab td{font-size:12.5px;vertical-align:middle} table.pi-tab td.num{font-variant-numeric:tabular-nums}

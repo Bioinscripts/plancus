@@ -6,10 +6,11 @@ Runs when RNA-seq is given, either on the command line (``--rnaseq-r1/--rnaseq-r
 ``--rnaseq-bam``) or in the species TSV (FASTQ columns, or any cell ending in ``.bam``).
 
 Two ways in:
-  * FASTQ reads: they are aligned with HISAT2 (splice-aware) against the non-redundant
-    EVE windows (locus +/- flank, overlapping windows merged so a read is never split
-    between two copies of the same sequence), or against the whole genome with
-    ``reference="genome"``.
+  * FASTQ reads: they are aligned as ViralQuest does, `minimap2 -ax <preset> | samtools sort`
+    (sr for Illumina, splice presets for long reads), against the non-redundant EVE windows
+    (locus +/- flank, overlapping windows merged so a read is never split between two copies
+    of the same sequence), or against the whole genome with ``reference="genome"``. minimap2
+    -ax sr does not open introns: a short read crossing one is clipped at the junction.
   * BAM: used as is, no alignment. The BAM may be aligned to the whole genome or to
     context windows; the coordinate system is worked out from the header (see
     ``BamReference``), so a BAM made outside the pipeline works too.
@@ -350,26 +351,37 @@ def write_window_fasta(genome: str, windows: list[Window], destino: str) -> str:
 def _run_pipe(cmd_align: list, bam: str, threads: int, log: str) -> None:
     with open(log, "w") as err:
         alin = subprocess.Popen(cmd_align, stdout=subprocess.PIPE, stderr=err)
-        sort = subprocess.run(["samtools", "sort", "-@", str(max(1, threads // 2)), "-o", bam, "-"],
-                              stdin=alin.stdout, stderr=err)
+        mapeadas = subprocess.Popen(["samtools", "view", "-u", "-F", "4", "-"], stdin=alin.stdout,
+                                    stdout=subprocess.PIPE, stderr=err)       # unmapped reads are not kept
         alin.stdout.close()
+        sort = subprocess.run(["samtools", "sort", "-@", str(max(1, threads // 2)), "-o", bam, "-"],
+                              stdin=mapeadas.stdout, stderr=err)
+        mapeadas.stdout.close()
         alin.wait()
-    if alin.returncode != 0 or sort.returncode != 0:
+        mapeadas.wait()
+    if alin.returncode != 0 or mapeadas.returncode != 0 or sort.returncode != 0:
         raise RuntimeError(f"alignment failed; see {log}")
     subprocess.run(["samtools", "index", bam], check=True)
+
+
+# minimap2 preset per read technology, as ViralQuest's coverage step (viralquest/coverage.py).
+# Long reads keep minimap2's splice-aware presets: the reference here is a host genome with
+# introns, not a viral contig, and an unspliced preset would break a transcript into
+# supplementary alignments, which the coverage pass skips.
+MM2_PRESET = {"sr": "sr", "ont": "splice", "pb": "splice:hq", "hifi": "splice:hq"}
 
 
 def align_reads(sample: Sample, ref_fasta: str, outdir: str, threads: int = 4,
                 read_type: str = "sr", force: bool = False) -> str:
     """
-    Align one sample and return a sorted, indexed BAM. Short reads go to HISAT2 (RNA-seq
-    reads cross introns), then bowtie2 --local, then minimap2 -ax sr; long reads to
-    minimap2 -ax splice / splice:hq. An existing BAM is reused unless `force`.
+    Align one sample and return a sorted, indexed BAM, the way ViralQuest does it:
+    `minimap2 -ax <preset> | samtools sort`, the preset chosen by the read technology
+    (sr = Illumina short reads, ont, pb, hifi). Without minimap2, short reads fall back to
+    HISAT2 and then bowtie2 --local. An existing BAM is reused unless `force`.
     """
     pasta_bam = os.path.join(outdir, "bam")
     pasta_idx = os.path.join(outdir, "index")
     os.makedirs(pasta_bam, exist_ok=True)
-    os.makedirs(pasta_idx, exist_ok=True)
     bam = os.path.join(pasta_bam, f"{sample.name}.bam")
     log = os.path.join(pasta_bam, f"{sample.name}.align.log")
     if os.path.exists(bam) and os.path.getsize(bam) > 0 and os.path.exists(bam + ".bai") and not force:
@@ -378,14 +390,17 @@ def align_reads(sample: Sample, ref_fasta: str, outdir: str, threads: int = 4,
 
     prefixo = os.path.join(pasta_idx, os.path.basename(ref_fasta).rsplit(".", 1)[0])
     pareado = bool(sample.r2)
+    if read_type not in MM2_PRESET:
+        raise RuntimeError(f"unknown read type: {read_type} (sr, ont, pb or hifi)")
 
-    if read_type in ("ont", "pb", "hifi"):
-        if not shutil.which("minimap2"):
-            raise RuntimeError("minimap2 is needed for long reads (conda install -c bioconda minimap2)")
-        preset = "splice" if read_type == "ont" else "splice:hq"
-        cmd = ["minimap2", "-ax", preset, "-t", str(threads), ref_fasta, sample.r1]
+    if shutil.which("minimap2"):
+        preset = MM2_PRESET[read_type]
+        cmd = ["minimap2", "-ax", preset, "-t", str(threads), ref_fasta, sample.r1] + ([sample.r2] if pareado else [])
         aligner = f"minimap2 -ax {preset}"
+    elif read_type != "sr":
+        raise RuntimeError("minimap2 is needed for long reads (conda install -c bioconda minimap2)")
     elif shutil.which("hisat2") and shutil.which("hisat2-build"):
+        os.makedirs(pasta_idx, exist_ok=True)
         if not os.path.exists(prefixo + ".1.ht2"):
             print(f"[RNAseq] Building the HISAT2 index for {os.path.basename(ref_fasta)}...")
             subprocess.run(["hisat2-build", "-p", str(threads), ref_fasta, prefixo], check=True,
@@ -394,19 +409,15 @@ def align_reads(sample: Sample, ref_fasta: str, outdir: str, threads: int = 4,
         cmd += ["-1", sample.r1, "-2", sample.r2] if pareado else ["-U", sample.r1]
         aligner = "HISAT2"
     elif shutil.which("bowtie2") and shutil.which("bowtie2-build"):
-        print("[RNAseq] [warning] HISAT2 not found; bowtie2 is not splice-aware, so reads "
-              "crossing introns will be soft-clipped or lost.")
+        os.makedirs(pasta_idx, exist_ok=True)
         if not os.path.exists(prefixo + ".1.bt2"):
             subprocess.run(["bowtie2-build", "--threads", str(threads), ref_fasta, prefixo], check=True,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         cmd = ["bowtie2", "-p", str(threads), "-x", prefixo, "--very-sensitive-local", "--no-unal"]
         cmd += ["-1", sample.r1, "-2", sample.r2] if pareado else ["-U", sample.r1]
         aligner = "bowtie2 --local"
-    elif shutil.which("minimap2"):
-        cmd = ["minimap2", "-ax", "sr", "-t", str(threads), ref_fasta, sample.r1] + ([sample.r2] if pareado else [])
-        aligner = "minimap2 -ax sr"
     else:
-        raise RuntimeError("no aligner found (install hisat2: conda install -c bioconda hisat2 samtools)")
+        raise RuntimeError("no aligner found (conda install -c bioconda minimap2 samtools)")
 
     print(f"[RNAseq] {sample.name}: aligning with {aligner} ({'paired' if pareado else 'single'}-end)...")
     _run_pipe(cmd, bam, threads, log)
